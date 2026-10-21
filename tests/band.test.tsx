@@ -91,15 +91,22 @@ describe('board', () => {
   })
 
   test('a project written as a whole Windows path, drive letter in either case, is one project', () => {
-    const csv = 'key,started,project\n' + ['c:\\Repos\\shop', 'C:\\Repos\\shop\\', 'shop', '/repo/shop/'].map((p, i) => `k-${i},2026-10-15 12:00,"${p}"`).join('\n')
+    const csv = 'key,started,project,cost_usd,turns,agent_minutes,tokens_total\n' + ['c:\\Repos\\shop', 'C:\\Repos\\shop\\', 'shop', '/repo/shop/'].map((p, i) => `k-${i},2026-10-15 12:00,"${p}",0,0,0,0`).join('\n')
     expect(tasksFrom(csv).map(t => t.project)).toEqual(['shop', 'shop', 'shop', 'shop'])
   })
 
   test('where case is ignored, a folder spelled in another case is the same project, named as its newest row spells it', () => {
-    const csv = 'key,started,project\n' + ['C:\\Repos\\Shop', 'c:\\repos\\shop', 'SHOP', 'other'].map((p, i) => `k-${i},2026-10-1${i} 12:00,"${p}"`).join('\n')
+    const csv = 'key,started,project,cost_usd,turns,agent_minutes,tokens_total\n' + ['C:\\Repos\\Shop', 'c:\\repos\\shop', 'SHOP', 'other'].map((p, i) => `k-${i},2026-10-1${i} 12:00,"${p}",0,0,0,0`).join('\n')
     const projects = (ignoreCase: boolean) => dataOf(boardHtml(tasksFrom(csv), Date.UTC(2026, 9, 15, 12, 0), ignoreCase)).tasks.map((t: { project: string }) => t.project)
     expect(projects(true)).toEqual(['SHOP', 'SHOP', 'SHOP', 'other'])
     expect(projects(false)).toEqual(['Shop', 'shop', 'SHOP', 'other'])
+  })
+
+  test('a malformed or truncated ledger row is dropped, a zero-cost row is kept', () => {
+    const head = CSV.split('\n')[0]
+    const csv = `${head}\nz-1,2026-10-15 12:00,shop,Free,0.00,0,0.0,0,0,,0,0,0,not run,full\n` +
+      'x-1,2026-10-15 12:00,shop,Bad,oops,2,1.0,500,50,,0,0,0,not run,full\nt-1,2026-10-15 12:00,shop\n'
+    expect(tasksFrom(csv).map(t => [t.name, t.cost])).toEqual([['Free', 0]])
   })
 
   const dataOf = (html: string) => JSON.parse(/<script type="application\/json" id="board-data">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? 'null')

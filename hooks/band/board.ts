@@ -66,8 +66,9 @@ export function tasksFrom(text: string): Task[] {
   const [head, ...rows] = parseCsv(text)
   if (!head?.includes('key')) return []
   const at = (row: string[], col: string) => row[head.indexOf(col)] ?? ''
-  const num = (row: string[], col: string) => Number(at(row, col)) || 0
-  return rows.map(row => ({
+  // Empty or malformed numbers are NaN, so a broken row is dropped instead of counting as zero.
+  const num = (row: string[], col: string) => (at(row, col) === '' ? NaN : Number(at(row, col)))
+  const tasks = rows.map(row => ({
     started: at(row, 'started'),
     // Windows rows may hold the whole path, drive letter in either case (#1440): the folder names the project, as the import does.
     project: at(row, 'project').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '',
@@ -81,6 +82,7 @@ export function tasksFrom(text: string): Task[] {
     level: at(row, 'level'),
     model: at(row, 'model'),
   }))
+  return tasks.filter(t => [t.cost, t.turns, t.agentMinutes, t.tokens, t.reuse ?? 0].every(Number.isFinite))
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
