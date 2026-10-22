@@ -36,7 +36,10 @@ const GENERIC = new Set(['main', 'init', 'run', 'get', 'set', 'test', 'setup', '
 
 export const isCode = (file: string) => DEFS.some(([ext]) => ext.test(file))
 
-export const isSource = (file: string) => isCode(file) && !SKIP_DIR.test(file) && !SKIP_FILE.test(file)
+export const isSource = (file: string) => {
+  file = file.replace(/\\/g, '/')
+  return isCode(file) && !SKIP_DIR.test(file) && !SKIP_FILE.test(file)
+}
 
 export function defsIn(file: string, text: string): string[] {
   const rules = DEFS.find(([ext]) => ext.test(file))?.[1] ?? []

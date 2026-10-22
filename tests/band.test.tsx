@@ -15,6 +15,7 @@ import {
   fmtTokens,
   inProject,
   isTestCommand,
+  isSource,
   mainModel,
   markdown,
   metricsSvg,
@@ -243,6 +244,14 @@ describe('metrics', () => {
     const added = addedLines('x = 1', 'x = 1\ny = to_cents(p)\nz = load(f)\nw = parse_price(s)')
     expect(added).not.toContain('x = 1')
     expect(callsIn(added, known, ['parse_price'])).toEqual(['to_cents'])
+  })
+
+  test('Windows paths keep tests and generated files out of source metrics', () => {
+    expect(isSource('C:\\repo\\tests\\cart.js')).toBe(false)
+    expect(isSource('C:\\repo\\node_modules\\lib\\cart.js')).toBe(false)
+    expect(isSource('C:\\repo\\src\\test_cart.py')).toBe(false)
+    expect(isSource('C:\\repo\\src\\cart.py')).toBe(true)
+    expect([...parseDefs('C:\\repo\\tests\\test_cart.py:1:def helper():')]).toEqual([])
   })
 
   test('only files under the project root count, with either slash', () => {
