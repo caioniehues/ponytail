@@ -76,6 +76,7 @@ function namesIn(file, text) {
 }
 
 function buildMap(root = process.cwd()) {
+  const realRoot = fs.realpathSync(root);
   const files = listFiles(root)
     .filter((f) => SAFE_PATH.test(f) && SRC.test(f) && !SKIP_DIR.test(f) && !SKIP_FILE.test(f))
     .slice(0, MAX_FILES)
@@ -85,11 +86,16 @@ function buildMap(root = process.cwd()) {
   for (const f of files) {
     let text;
     try {
-      const st = fs.lstatSync(path.join(root, f));
+      const file = path.join(root, f);
+      const st = fs.lstatSync(file);
       if (!st.isFile()) continue;
+      // lstat only rejects the final symlink; a parent can still point outside.
+      const realFile = fs.realpathSync(file);
+      const relative = path.relative(realRoot, realFile);
+      if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) continue;
       // Only the head is read: a tracked 30 MB bundle would otherwise be read whole to keep 64 KB.
       const buf = Buffer.alloc(Math.min(st.size, 65536));
-      const fd = fs.openSync(path.join(root, f), 'r');
+      const fd = fs.openSync(realFile, 'r');
       try { fs.readSync(fd, buf, 0, buf.length, 0); } finally { fs.closeSync(fd); }
       text = buf.toString('utf8');
     } catch (e) { continue; }

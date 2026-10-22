@@ -4,6 +4,8 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const test = require('node:test');
+const { execFileSync } = require('child_process');
 const { buildMap } = require('../hooks/ponytail-map');
 
 // The map is injected into the model's context: repo text that is not an identifier must never
@@ -65,4 +67,52 @@ try {
 } finally {
   fs.chmodSync(path.join(walk, 'locked'), 0o755);
   fs.rmSync(walk, { recursive: true, force: true });
+}
+
+for (const linkedRoot of [false, true]) {
+  test(`tracked paths stay inside the ${linkedRoot ? 'symlinked' : 'real'} project root`, (t) => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-map-links-'));
+    t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+    // Git hooks export paths for their own repo; this fixture needs its own index.
+    const gitEnv = {};
+    for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']) {
+      if (process.env[key] !== undefined) {
+        gitEnv[key] = process.env[key];
+        delete process.env[key];
+      }
+    }
+    t.after(() => Object.assign(process.env, gitEnv));
+
+    const repo = path.join(temp, 'repo');
+    const outside = path.join(temp, 'repo-sibling');
+    for (const [file, name] of [
+      ['normal/a.js', 'normalExport'],
+      ['src/helper.js', 'originalInside'],
+      ['lib/helper.js', 'insideTarget'],
+      ['shared/helper.js', 'originalShared'],
+      ['..helpers/a.js', 'dotExport'],
+    ]) {
+      fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+      fs.writeFileSync(path.join(repo, file), `export const ${name} = 1;\n`);
+    }
+    fs.mkdirSync(outside);
+    const externalFile = path.join(outside, 'helper.js');
+    fs.writeFileSync(externalFile, 'export const outsideParent = 1;\n');
+    execFileSync('git', ['init', '-q', repo]);
+    execFileSync('git', ['add', '.'], { cwd: repo });
+    for (const [folder, target] of [['src', outside], ['shared', path.join(repo, 'lib')]]) {
+      fs.rmSync(path.join(repo, folder), { recursive: true });
+      fs.symlinkSync(target, path.join(repo, folder), 'junction');
+    }
+    const root = linkedRoot ? path.join(temp, 'alias') : repo;
+    if (linkedRoot) fs.symlinkSync(repo, root, 'junction');
+
+    const reads = t.mock.method(fs, 'openSync');
+    const result = buildMap(root);
+    assert.ok(!reads.mock.calls.some(call => fs.realpathSync(call.arguments[0]) === fs.realpathSync(externalFile)), 'must not read the external file');
+    assert.ok(!result.includes('outsideParent'), result);
+    assert.ok(result.includes('normal/: normalExport'), result);
+    assert.ok(result.includes('shared/: insideTarget'), 'links within the project remain usable');
+    assert.ok(result.includes('..helpers/: dotExport'), 'a leading .. in a directory name is not a parent traversal');
+  });
 }
