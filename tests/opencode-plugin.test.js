@@ -166,6 +166,26 @@ test('V2 context hook injects the ruleset, and stays silent when off', async () 
   assert.deepEqual(quiet.system, []);
 });
 
+test('V2 context hook turns ponytail off on a typed "stop ponytail", not on a mention of it', async () => {
+  const { hooks } = await setupV2();
+  const turn = (text, sessionID = 's') => ({ sessionID, system: [], messages: [{ role: 'user', content: [{ type: 'text', text }] }] });
+
+  fs.writeFileSync(statePath, 'full');
+  const mention = turn('add a normal mode toggle');
+  await hooks.context(mention);
+  assert.equal(fs.readFileSync(statePath, 'utf8'), 'full');
+  assert.equal(mention.system.length, 1);
+
+  const stop = turn('Stop ponytail!');
+  await hooks.context(stop);
+  assert.equal(fs.readFileSync(statePath, 'utf8'), 'off');
+  assert.deepEqual(stop.system, [], 'off applies on the same turn');
+  // Levels are per session here: another session keeps its ruleset.
+  const other = turn('next step', 't');
+  await hooks.context(other);
+  assert.equal(other.system.length, 1, 'stop ponytail in one session must not switch off another');
+});
+
 test('V2 compaction hook injects the same ruleset as context, and stays silent when off (#1086)', async () => {
   try { fs.unlinkSync(statePath); } catch (e) {}
   let { hooks } = await setupV2();
