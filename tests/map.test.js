@@ -172,4 +172,18 @@ execFileSync('git', ['init', '-q'], { cwd: big });
 execFileSync('git', ['add', '-A'], { cwd: big });
 const out = execFileSync(process.execPath, [path.join(__dirname, '..', 'hooks', 'ponytail-map.js'), big]).toString();
 assert.ok(out.includes('zz/utils/: slugify'), out);
-fs.rmSync(big, { recursive: true, force: true });
+
+{
+  // A PONYTAIL_MAP_CHARS that is not a positive number falls back to 2000: NaN would remove the cap.
+  const big = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-map-'));
+  for (let i = 0; i < 80; i++) {
+    fs.mkdirSync(path.join(big, `pkg${i}`));
+    fs.writeFileSync(path.join(big, `pkg${i}`, 'index.js'), `export function alpha${i}() {}\nexport function beta${i}() {}\nexport function gamma${i}() {}\n`);
+  }
+  for (const v of ['abc', '0', '-5']) {
+    const out = require('child_process').execFileSync(process.execPath,
+      [path.join(__dirname, '..', 'hooks', 'ponytail-map.js'), big], { env: { ...process.env, PONYTAIL_MAP_CHARS: v } }).toString();
+    assert.ok(/more folders not listed/.test(out), `PONYTAIL_MAP_CHARS=${v}: ${out}`);
+  }
+  fs.rmSync(big, { recursive: true, force: true });
+}
