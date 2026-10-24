@@ -51,6 +51,12 @@ fs.writeFileSync(path.join(dir, 'legacy-api', 'api.js'), 'export function curren
 const archiveMap = buildMap(dir);
 assert.ok(archiveMap.includes('legacy-api/: currentApi'), archiveMap);
 assert.ok(!archiveMap.includes('obsolete'), archiveMap);
+
+// PHP has top-level functions, not only classes: a function-only file still gets a line.
+fs.mkdirSync(path.join(dir, 'php'));
+fs.writeFileSync(path.join(dir, 'php', 'helpers.php'), '<?php\nfunction slugify($s) { return $s; }\ntrait Cart {}\n');
+fs.writeFileSync(path.join(dir, 'php', 'lib.php'), '<?php\nfunction trimAll($s) { return $s; }\n');
+assert.ok(buildMap(dir).includes('php/: slugify, Cart, trimAll'), buildMap(dir));
 fs.rmSync(dir, { recursive: true, force: true });
 
 // Outside git, one folder that cannot be read must not cost the whole map. Root and Windows
