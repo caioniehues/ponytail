@@ -155,3 +155,18 @@ for (const name of ['Repo', 'env', 'Base', 'Shape', 'Point', 'Result', 'Color', 
 }
 assert.ok(!/\bclass\b/.test(modMap.split('\n').slice(1).join('\n')), modMap);
 fs.rmSync(mods, { recursive: true, force: true });
+
+// Shared paths must win the MAX_FILES cap: the slice comes after the shared-first sort, so a
+// late-sorting shared module (zz/utils) is listed even when 4000+ plain files fill the order.
+const big = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-map-'));
+for (let i = 0; i < 4001; i++) {
+  fs.mkdirSync(path.join(big, `pkg${i}`));
+  fs.writeFileSync(path.join(big, `pkg${i}`, 'index.js'), `export function fn${i}() {}\n`);
+}
+fs.mkdirSync(path.join(big, 'zz', 'utils'), { recursive: true });
+fs.writeFileSync(path.join(big, 'zz', 'utils', 'strings.js'), 'export function slugify(s) { return s }\n');
+execFileSync('git', ['init', '-q'], { cwd: big });
+execFileSync('git', ['add', '-A'], { cwd: big });
+const out = execFileSync(process.execPath, [path.join(__dirname, '..', 'hooks', 'ponytail-map.js'), big]).toString();
+assert.ok(out.includes('zz/utils/: slugify'), out);
+fs.rmSync(big, { recursive: true, force: true });
