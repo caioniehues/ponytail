@@ -246,6 +246,19 @@ describe('metrics', () => {
     const at = Date.UTC(2026, 9, 15, 12, 0)
     const csv = upsertCsv('', snapshot({ ...BASE, name: '=2+2' }, at))
     expect(csv).toContain("'=2+2")
+    // Replacing the row re-writes kept rows through the same escaping: once, not twice.
+    const again = upsertCsv(csv, snapshot({ ...BASE, session: 'another-session', name: 'x' }, at))
+    expect(again).toContain("'=2+2")
+    expect(again).not.toContain("''=2+2")
+  })
+
+  test('a task name with a line break is replaced whole, not left as a stray line', () => {
+    const at = Date.UTC(2026, 9, 15, 12, 0)
+    const first = upsertCsv('', snapshot({ ...BASE, name: 'first\nsecond' }, at))
+    const again = upsertCsv(first, snapshot({ ...BASE, name: 'first\nsecond', turns: 7 }, at))
+    const rows = parseCsv(again)
+    expect(rows.length).toBe(2)
+    expect(rows[1]?.[3]).toBe('first\nsecond')
   })
 
   test('the desktop row is one SVG with real dividers, escaped and cut to fit', () => {
