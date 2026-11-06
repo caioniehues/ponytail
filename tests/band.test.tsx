@@ -1334,3 +1334,25 @@ test('the start-up definition search reads only the source files the band parses
     expect(included).toContain(`*.${ext}`)
   }
 })
+
+test('the compact row shows the cache hit rate once a turn has used tokens', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('session.repo', () => ({ value: { root: '/repo' } }) as never)
+  on('session.id', () => ({ value: 's1' }))
+  on('session.turns', () => ({ value: 1 }))
+  on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0.5 } } }) as never)
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
+  on('fs.read', () => ({ deny: 'missing' }) as never)
+  on('fs.list', () => ({ value: [] }))
+  on('fs.write', () => ({ value: undefined }))
+  on('turn.complete', () => ({ text: '' }))
+  const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'terminal', ...BAND })
+  expect(await ui.find({ type: 'Text', text: /% cache/ })).toBeUndefined()
+  // 9,400 read from the cache against 100 fresh and 500 written: 94%.
+  const usage = { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 9400, cache_creation_input_tokens: 500 }
+  await $.turn.complete({ answer: '', durationMs: 1000, usage } as never)
+  expect(await ui.find({ type: 'Text', text: /94% cache/ })).toBeDefined()
+  await ui.unmount()
+})
