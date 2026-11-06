@@ -45,3 +45,19 @@ const archiveMap = buildMap(dir);
 assert.ok(archiveMap.includes('legacy-api/: currentApi'), archiveMap);
 assert.ok(!archiveMap.includes('obsolete'), archiveMap);
 fs.rmSync(dir, { recursive: true, force: true });
+
+// Outside git, one folder that cannot be read must not cost the whole map. Root and Windows
+// ignore chmod 000, so this part only runs where the folder really is unreadable.
+const walk = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-map-'));
+fs.mkdirSync(path.join(walk, 'src'));
+fs.writeFileSync(path.join(walk, 'src', 'a.js'), 'export function kept() {}\n');
+fs.mkdirSync(path.join(walk, 'locked'));
+fs.chmodSync(path.join(walk, 'locked'), 0o000);
+let unreadable = false;
+try { fs.readdirSync(path.join(walk, 'locked')); } catch (e) { unreadable = true; }
+try {
+  if (unreadable) assert.ok(buildMap(walk).includes('src/: kept'), 'map lost to an unreadable folder');
+} finally {
+  fs.chmodSync(path.join(walk, 'locked'), 0o755);
+  fs.rmSync(walk, { recursive: true, force: true });
+}
