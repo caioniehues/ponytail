@@ -97,7 +97,9 @@ async function readLevel($: EngineInterface): Promise<string> {
     const level = (await $.fs.read(`${dir}/.ponytail-active`)).trim()
     return LEVELS.includes(level) ? level : 'off'
   } catch {
-    return 'off'
+    // Only the node hooks write the flag, so without node an absent flag is not a deliberate /ponytail off (#1280).
+    const node = await $.process.run(['node', '--version']).catch(() => undefined)
+    return node?.exitCode === 0 ? 'off' : 'no node'
   }
 }
 
@@ -424,7 +426,7 @@ export const register: Register = (on, options) => {
         <Box key="band" flexDirection="row" alignItems="center" gap={2} width={width}>
           {/* A click opens the four levels: one click, one turn, no stops on levels nobody wanted. */}
           {/* Button takes one string label (engine 2.1.292 refuses Text children), so the dot sits beside it. */}
-          <Text color={b.level === 'off' ? 'inactive' : 'suggestion'}>●</Text>
+          <Text color={b.level === 'off' ? 'inactive' : b.level === 'no node' ? 'warning' : 'suggestion'}>●</Text>
           <Button key="level" plain label={b.level} onPress={toggle} />
           <Text>${b.spent.toFixed(2)}</Text>
           {last !== undefined && <Text dimColor>last ${last.toFixed(2)}</Text>}
