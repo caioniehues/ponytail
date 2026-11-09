@@ -131,6 +131,13 @@ describe('board', () => {
     expect(html).toContain(':root[data-theme=system]{')
   })
 
+  test('the period selector offers month to date and last month, spanning whole calendar days', () => {
+    const html = boardHtml([], Date.UTC(2026, 10, 9, 12, 0))
+    expect(html).toContain('data-period="mtd"')
+    expect(html).toContain('data-period="last"')
+    // The calendar spans run in tests/band-import.test.js: the engine's test sandbox refuses to evaluate the page's script.
+  })
+
   test('an empty board still loads and says there are no sessions yet', () => {
     const html = boardHtml([], Date.UTC(2026, 9, 15, 12, 0))
     expect(dataOf(html).tasks).toEqual([])
