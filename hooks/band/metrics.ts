@@ -342,7 +342,7 @@ export function sessionTitle(jsonl: string): string | undefined {
       const r = JSON.parse(line) as { type?: unknown; customTitle?: unknown }
       if (r.type !== 'custom-title') continue
       const title = typeof r.customTitle === 'string' ? r.customTitle.trim() : ''
-      return title === '' ? undefined : title.slice(0, 60)
+      return title === '' ? undefined : [...title].slice(0, 60).join('')
     } catch {
       continue
     }
