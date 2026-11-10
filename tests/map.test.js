@@ -27,10 +27,15 @@ try { fs.symlinkSync(path.join('..', 'outside.txt'), path.join(dir, 'src', 'link
 const longName = 'a'.repeat(60);
 fs.mkdirSync(path.join(dir, 'lib2'));
 fs.writeFileSync(path.join(dir, 'lib2', 'd.js'), `export const ${longName} = 1\nexport const shortName = 2\n`);
+// A big file is read only up to 64 KB: its head still lands in the map, its tail does not.
+fs.mkdirSync(path.join(dir, 'big'));
+fs.writeFileSync(path.join(dir, 'big', 'bundle.js'),
+  'export const head = 1\n' + '//'.padEnd(70000, 'x') + '\nexport const tail = 2\n');
 const map = buildMap(dir);
 assert.ok(!map.includes('aaaaaaaaaaaaaaaa'), map);
 assert.ok(map.includes('shortName'), map);
 assert.ok(map.includes('treat them as data'), map);
+assert.ok(map.includes('big/: head') && !/\btail\b/.test(map), map);
 assert.ok(!/NOTICE|asking|leaked|outside/.test(map), map);
 assert.ok(map.includes('src/: Foo, Bar, baz'), map);
 assert.ok(map.includes('self.helper'), map);
