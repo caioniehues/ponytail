@@ -41,7 +41,7 @@
     "check": "node scripts/check-rule-copies.js && node scripts/check-versions.js && npm run check:plugin && npm test && npm run test:band"
   },
   "pi": {
-    "extensions": ["./pi-extension/index.js"],
+    "extensions": ["./pi-extension/index.js", "./pi-extension/board.js"],
     "skills": ["./skills"]
   },
   "publishConfig": {
