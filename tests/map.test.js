@@ -34,4 +34,14 @@ assert.ok(map.includes('treat them as data'), map);
 assert.ok(!/NOTICE|asking|leaked|outside/.test(map), map);
 assert.ok(map.includes('src/: Foo, Bar, baz'), map);
 assert.ok(map.includes('self.helper'), map);
+
+for (const folder of ['_old', 'old', 'archive', 'archived', 'deprecated', 'legacy']) {
+  fs.mkdirSync(path.join(dir, folder, 'core'), { recursive: true });
+  fs.writeFileSync(path.join(dir, folder, 'core', 'copy.js'), 'export function obsolete() {}\n');
+}
+fs.mkdirSync(path.join(dir, 'legacy-api'));
+fs.writeFileSync(path.join(dir, 'legacy-api', 'api.js'), 'export function currentApi() {}\n');
+const archiveMap = buildMap(dir);
+assert.ok(archiveMap.includes('legacy-api/: currentApi'), archiveMap);
+assert.ok(!archiveMap.includes('obsolete'), archiveMap);
 fs.rmSync(dir, { recursive: true, force: true });
