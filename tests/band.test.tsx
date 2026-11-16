@@ -31,6 +31,8 @@ import {
   totalTokens,
   upsertCsv,
   CSV_HEADER,
+  DEF_PATHS,
+  isCode,
   webhookRequest,
 } from '../hooks/band/metrics'
 
@@ -604,4 +606,30 @@ test('a turn reads the tests, reuse and stale tests out of its transcript', asyn
   // reuse_pct, reused, new, callers_open in the ledger: 1 of 3 functions reused.
   expect(rows.at(-1)).toContain(',33,1,2,1,')
   await ui.unmount()
+})
+
+test('the start-up definition search reads only the source files the band parses (#1443)', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('session.repo', () => ({ value: { root: '/repo/shop' } }) as never)
+  on('session.id', () => ({ value: 's1' }))
+  on('session.turns', () => ({ value: 1 }))
+  on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0 } } }) as never)
+  const searches: string[][] = []
+  on('process.run', ($, e) => {
+    if (e.argv[0] === 'git' && e.argv[1] === 'grep') searches.push(e.argv)
+    return { value: { exitCode: 1, stdout: '', stderr: '' } } as never
+  })
+  on('fs.read', () => ({ deny: 'missing' }) as never)
+  on('fs.list', () => ({ value: [] }))
+  on('fs.write', () => ({ value: undefined }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/repo/shop', surface: null } as never)
+  const argv = searches[0] ?? []
+  expect(argv.slice(argv.indexOf('--') + 1)).toEqual(DEF_PATHS)
+  // Every included extension is one the band reads, and HTML is not.
+  const included = DEF_PATHS.filter(p => !p.startsWith(':'))
+  expect(included.every(p => isCode(`src/a${p.slice(1)}`))).toBe(true)
+  expect(isCode('saved/page.html')).toBe(false)
 })
