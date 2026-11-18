@@ -1,28 +1,20 @@
-mod cli;
 mod config;
 mod hook;
 mod instructions;
 mod js;
 mod level;
-mod original;
 mod sha256;
 mod state;
 mod units;
 
-use std::ffi::OsString;
 use std::process::ExitCode;
 
 /// The plugin's folder: rust/app is built in place, two levels below it.
 const PLUGIN_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
+/// Reads argv as rust/reference.js does: the command, then its one argument; the rest is ignored.
 fn main() -> ExitCode {
-    original::report_fallbacks();
-    let argv: Vec<OsString> = std::env::args_os().collect();
-    if let Ok(matches) = cli::command().try_get_matches_from(&argv) {
-        let (command, sub) = matches.subcommand().unwrap_or((cli::ROOT, &matches));
-        if let Some(code) = units::dispatch(command, sub) {
-            return code;
-        }
-    }
-    original::run(&argv[1..])
+    let mut args = std::env::args_os().skip(1);
+    let (command, arg) = (args.next(), args.next());
+    units::dispatch(command.as_deref(), arg.as_deref())
 }

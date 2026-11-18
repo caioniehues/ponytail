@@ -197,6 +197,9 @@ module.exports = [
   prompt('band-off', { session_id: 'A', prompt: '/ponytail band off' }, repo, { [SESSION('A')]: 'full' }),
   prompt('band-toggle-on', { session_id: 'A', prompt: '/ponytail band' }, repo, { 'home/.claude/.ponytail-band': 'off\n' }),
   prompt('band-import', { session_id: 'A', prompt: '/ponytail band import' }, repo, { [SESSION('A')]: 'ultra' }),
+  // argv as the reference reads it: a `--` is an argument (fork #13).
+  { name: 'argv-dashdash-hook', args: ['hook', '--', 'subagent-start'], stdin: '{}', env: {}, files: {} },
+  { name: 'argv-dashdash-map', args: ['map', '--'], env: {}, files: {} },
   // The map: non-ASCII names near the budget, a deadline never reached, the budget variable.
   map('map-non-ascii-budget', ['proj'], { PONYTAIL_MAP_CHARS: '160' }, nonAscii),
   map('map-non-ascii', ['proj'], {}, nonAscii),
