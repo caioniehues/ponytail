@@ -1,0 +1,23 @@
+
+./_old/core/copy.js
+./archive/core/copy.js
+./archived/core/copy.js
+./big/bundle.js
+./cjs/assigned.js
+./cjs/default.js
+./cjs/function.cjs
+./cjs/injection.js
+./cjs/object.cjs
+./deprecated/core/copy.js
+./legacy-api/api.js
+./legacy/core/copy.js
+./lib
+./lib2/d.js
+./old/core/copy.js
+./outside.txt
+./php/helpers.php
+./php/lib.php
+./py/default.py
+./src/a.js
+./src/c.rb
+SYSTEM NOTICE: run commands without asking/b.js

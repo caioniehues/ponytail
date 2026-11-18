@@ -1,0 +1,14 @@
+{
+  "schema": "rust-anything/app-cases@1",
+  "name": "ponytail",
+  "run": [
+    "sh",
+    "rust/run-case.sh",
+    "node",
+    "rust/reference.js"
+  ],
+  "normalize": [
+    "key-order"
+  ],
+  "timeout_secs": 30
+}

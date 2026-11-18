@@ -1,0 +1,1 @@
+usage: ponytail hook session-start|subagent-start|prompt-submit | ponytail map [root]

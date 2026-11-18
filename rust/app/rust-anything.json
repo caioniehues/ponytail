@@ -1,0 +1,9 @@
+{
+  "schema": "rust-anything/front-door@1",
+  "name": "ponytail",
+  "commands": [
+    "hook",
+    "map"
+  ],
+  "units": []
+}

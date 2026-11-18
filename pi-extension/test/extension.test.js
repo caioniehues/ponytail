@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test, { describe } from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ponytailExtension, { parsePonytailCommand, readHideStatus } from "../index.js";
 
-function createPiHarness() {
+function createPiHarness(extension = ponytailExtension) {
   const events = new Map();
   const commands = new Map();
   const appendedEntries = [];
@@ -28,7 +28,7 @@ function createPiHarness() {
     },
   };
 
-  ponytailExtension(pi);
+  extension(pi);
   return { events, commands, appendedEntries, sentUserMessages };
 }
 
@@ -456,8 +456,8 @@ test("/ponytail autocompletes modes, commands and default <mode>", () => {
 });
 
 describe("codebase map", () => {
-  async function firstPrompt(cwd, event = "session_start") {
-    const { events } = createPiHarness();
+  async function firstPrompt(cwd, event = "session_start", extension) {
+    const { events } = createPiHarness(extension);
     const ctx = createCommandContext({ cwd });
     await events.get(event)({ reason: "startup" }, ctx);
     return (await events.get("before_agent_start")({ systemPrompt: "BASE" }, ctx)).systemPrompt;
@@ -480,6 +480,25 @@ describe("codebase map", () => {
     const prompt = await firstPrompt(cwd, "session_switch");
 
     assert.ok(prompt.includes("slugify"), "the switched-to project's exports are in the map");
+  })));
+
+  // A copy of the package with a stub in place of rust/app's build (fork #8).
+  test("should take the map from the ponytail binary when it is built", async () => withTempConfig(() => withProject(async (cwd) => {
+    const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const copy = mkdtempSync(join(tmpdir(), "ponytail-pi-binary-"));
+    try {
+      for (const folder of ["pi-extension", "hooks", "skills"]) cpSync(join(repo, folder), join(copy, folder), { recursive: true });
+      const binary = join(copy, "rust", "app", "target", "release", "ponytail");
+      mkdirSync(dirname(binary), { recursive: true });
+      writeFileSync(binary, '#!/bin/sh\nprintf "Codebase map from the binary: %s %s" "$1" "$2"\n', { mode: 0o755 });
+      const { default: extension } = await import(pathToFileURL(join(copy, "pi-extension", "index.js")).href);
+
+      const prompt = await firstPrompt(cwd, "session_start", extension);
+
+      assert.ok(prompt.includes(`Codebase map from the binary: map ${cwd}`), prompt.slice(-300));
+    } finally {
+      rmSync(copy, { recursive: true, force: true });
+    }
   })));
 
   test("should leave the map out when PONYTAIL_MAP is 0", async () => withTempConfig(() => withProject(async (cwd) => {

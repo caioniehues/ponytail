@@ -1,0 +1,1 @@
+{"statusLine":{"type":"command","command":"bash ~/caveman-statusline.sh && bash \"cache/ponytail/4.0.0/hooks/ponytail-statusline.sh\""}}

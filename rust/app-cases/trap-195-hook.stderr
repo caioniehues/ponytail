@@ -1,0 +1,4 @@
+usage: ponytail hook session-start|subagent-start|prompt-submit | ponytail map [root]
+./compact-home/.claude/.ponytail-active
+./compact-home/.claude/.ponytail-statusline-nudged
+./compact-home/.claude/ponytail-statusline.sh

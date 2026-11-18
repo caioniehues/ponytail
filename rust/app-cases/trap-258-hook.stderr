@@ -1,0 +1,2 @@
+usage: ponytail hook session-start|subagent-start|prompt-submit | ponytail map [root]
+./bare-home/.claude/.ponytail-active

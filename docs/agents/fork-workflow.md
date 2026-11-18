@@ -51,6 +51,18 @@ The fork keeps the ponytail level per session; upstream keeps one shared flag. P
 
 A load fills in each `userConfig` default before `register` sees its options, and `claude plugin test` loads the same way: an option a test leaves out arrives as the manifest's default, never `undefined`. So `options.sendNames === true` and `!== false` behave alike in every test; only the manifest default tells them apart.
 
+## Rust port
+
+The `ponytail` binary (fork #7, ADR 0002) is ported one subcommand at a time with rust-anything's app mode. Read `~/.claude/skills/rust-anything/whole-app.md` before a unit.
+
+- `rust/reference.js` is the reference: `hook session-start|subagent-start|prompt-submit` and `map [root]` run the JS hooks unchanged. A `map` that fails exits 1 with nothing printed.
+- `node rust/cases/record.js` records `rust/app-cases/` from it: it runs the hook tests with `rust/cases/preload.js`, which turns every Claude Code hook process and map they start into a case (the test's temp folder becomes the case's files), adds `rust/cases/added.js`, and lets `rust-anything app record` run each case twice and add its traps. Run it again after a pick changes hook behaviour; the Rust then has to catch up. Every case sets the host markers, `HOME`, `XDG_CONFIG_HOME` and the Claude dirs, so the shell that replays it leaks nothing in. rust-anything cuts case names past 24 characters, so the script refuses longer ones.
+- `npm run check:rust` builds `rust/app`, replays every case and runs the gate. Replay compares the files a case writes, not the ones it deletes, so cases run inside `rust/run-case.sh`, which lists the files left on stderr: always replay `sh rust/run-case.sh <binary>`, never the bare binary (it fails every case on stderr). `app wire` replays without the wrapper, so wire with `--no-check` and replay with `npm run check:rust`. `rust-anything gate` takes unit crates only, so the front door gets fmt, clippy and tests instead.
+- The front door's fallback runs `node rust/reference.js` from the folder it was built in (`rust/app/src/original.rs`).
+- `hooks/ponytail-launch.js` starts `rust/app/target/release/ponytail` when it exists and no other host's marker is set (`isCodex`, `isCopilot` and the rest from `ponytail-runtime.js`), and the JS hook otherwise. Claude Code still starts node first: the shared command has to stay `node -e …` for PowerShell (`tests/hooks-windows.test.js`). Pi's `loadMap` makes the same choice for `map`. `cargo clean` goes back to the JS.
+- An installed copy runs the binary only once it is built there: `cargo build --release --manifest-path <plugin root>/rust/app/Cargo.toml`, again after each plugin update.
+- Not in the cases: file times (a 30-day-old session file can't be a starting file, so pruning is only checked by `tests/activation-resume.test.js`), symlinks and `.git` folders (`preload.js` copies plain files), and a stdin that never closes (the hooks' 1 s fallback).
+
 ## Benchmarking a ruleset change
 
 A change to `skills/`, `AGENTS.md` or a rule copy needs three arms (`.github/CONTRIBUTING.md`). Runs call `claude -p` on the user's account: ask before starting one.

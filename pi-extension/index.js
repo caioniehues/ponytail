@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -265,12 +265,15 @@ export default function ponytailExtension(pi) {
   });
 
   // Same map and limits as the Claude Code SessionStart hook. It builds while the session starts;
-  // the first run waits for it, at most the 3 s limit.
+  // the first run waits for it, at most the 3 s limit. The ponytail binary builds it when rust/app is built (fork #8).
   function loadMap(ctx) {
     map = new Promise((resolve) => {
       if (process.env.PONYTAIL_MAP === "0") return resolve("");
+      const root = ctx?.cwd || process.cwd();
+      const binary = fileURLToPath(new URL("../rust/app/target/release/ponytail", import.meta.url));
       const script = fileURLToPath(new URL("../hooks/ponytail-map.js", import.meta.url));
-      execFile(process.execPath, [script, ctx?.cwd || process.cwd()], { timeout: 3000, maxBuffer: 64 * 1024 }, (error, stdout) => {
+      const [command, args] = existsSync(binary) ? [binary, ["map", root]] : [process.execPath, [script, root]];
+      execFile(command, args, { timeout: 3000, maxBuffer: 64 * 1024 }, (error, stdout) => {
         resolve(error ? "" : String(stdout).trimEnd());
       });
     });

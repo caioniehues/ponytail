@@ -31,7 +31,7 @@ Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) o
 
 ## Open work, in priority order
 
-1. **Rust port of the Claude Code hooks and the Pi map** (fork issue #7; ADR 0002: the JS stays the reference). Tickets #8–#13 with blocking edges, #14 the live check (`ready-for-human`). #8 is unblocked: the binary's front door that hands every subcommand to the JS, recorded from the JS now that #5 has landed. Read its comments first: the recorded `session-start` cases need `source: "fork"` and an unknown source (#15). One ticket per session, `/implement <n>`.
+1. **Rust port of the Claude Code hooks and the Pi map** (fork issue #7; ADR 0002: the JS stays the reference). Tickets #9–#13 with blocking edges, #14 the live check (`ready-for-human`). #8 has landed (2026-11-18): 519 cases recorded from the JS in `rust/app-cases/`, the front door in `rust/app` replays them 100% at 100% fallback, and Claude Code and Pi run it when it is built. How it works and its gotchas: "Rust port" in `docs/agents/fork-workflow.md`. #9 (subagent-start) is next. One ticket per session, `/implement <n>`.
 2. **Upstream PRs not yet taken** (`node scripts/upstream-todo.js`): #1129, #1126, #1120, #1117; #1315 may be covered by the fork's #1310 fix. Pick with `scripts/pick-upstream.sh <n>`.
 3. **Unverified hosts** (fork issue #16): OpenCode V1 (does `experimental.chat.system.transform` get a `sessionID`? If not, V1 falls back to the shared file) and Codex. The owner can't test these, so they stay unverified.
 4. **Benchmark task** for owner-anchored fixes: fork issue #1. Validating it needs paid `claude -p` runs: ask first.
