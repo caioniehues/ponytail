@@ -188,6 +188,8 @@ const textOf = (content: unknown): string =>
 // each result joined to its call by tool_use_id. Lines of several transcripts (the session's, its subagents') may come
 // one file after another: the calls are put in the order of their timestamps, a file's own order kept where none differ.
 export function toolCalls(jsonl: string): ToolCall[] {
+  // A row without a timestamp takes the one before it in its file, so every call has one to sort by.
+  let ts = ''
   const uses: { id: string; name: string; input: Record<string, unknown>; ts: string }[] = []
   const results = new Map<string, { failed: boolean; text: string; before?: string }>()
   for (const line of jsonl.split('\n')) {
@@ -201,15 +203,15 @@ export function toolCalls(jsonl: string): ToolCall[] {
     const content = row.message?.content
     if (!Array.isArray(content)) continue
     for (const block of content as Block[]) {
-      if (block?.type === 'tool_use') uses.push({ id: String(block.id), name: String(block.name), input: (block.input ?? {}) as Record<string, unknown>, ts: typeof row.timestamp === 'string' ? row.timestamp : '' })
+      if (block?.type === 'tool_use') uses.push({ id: String(block.id), name: String(block.name), input: (block.input ?? {}) as Record<string, unknown>, ts: (ts = typeof row.timestamp === 'string' ? row.timestamp : ts) })
       else if (block?.type === 'tool_result') {
         const before = row.toolUseResult?.originalFile
         results.set(String(block.tool_use_id), { failed: block.is_error === true, text: textOf(block.content), ...(typeof before === 'string' ? { before } : {}) })
       }
     }
   }
-  // ISO timestamps sort as text; a row without one keeps its place.
-  uses.sort((a, b) => (a.ts === '' || b.ts === '' ? 0 : a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0))
+  // ISO timestamps sort as text; the sort is stable, so ties keep their file's order.
+  uses.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0))
   return uses.map(u => {
     const r = results.get(u.id)
     return { name: u.name, input: u.input, failed: r?.failed === true, text: r?.text ?? '', ...(r?.before !== undefined ? { before: r.before } : {}) }

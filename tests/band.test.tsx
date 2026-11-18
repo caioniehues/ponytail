@@ -949,6 +949,9 @@ test("a subagent's calls fold in with the main transcript's in the order they ra
   ]
   // Main's file first, then the subagent's, as readTools reads them: the subagent's failing run came before main's edit.
   expect(toolsSummary(toolCalls([...main, ...sub].join('\n')), '/repo', new Map()).tests).toEqual({ state: 'stale', passed: 13, failed: 1 })
+  // A row with no timestamp takes the time of the row before it in its file: main's edit now sorts before the subagent's run.
+  const untimed = [main[0], main[1], JSON.stringify(use('m2', 'Edit', { file_path: '/repo/src/m.ts', old_string: 'a', new_string: 'b' })), main[3]]
+  expect(toolsSummary(toolCalls([...untimed, ...sub].join('\n')), '/repo', new Map()).tests.state).toBe('fail')
 })
 
 test('a test run through the PowerShell tool counts like one through Bash (dietrichgebert/ponytail#1414)', () => {
