@@ -310,4 +310,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { CSV_HEADER, PRICES, replyCost, sessionStats, csvRow, mergeRows, readRecords, run };
+module.exports = { CSV_HEADER, PRICES, replyCost, sessionStats, csvRow, mergeRows, readRecords, run, loadBoard };

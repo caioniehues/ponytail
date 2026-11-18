@@ -7,7 +7,8 @@ const os = require('os');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const { CSV_HEADER, replyCost, sessionStats, csvRow, mergeRows, run } = require('../hooks/ponytail-band-import');
+const vm = require('vm');
+const { CSV_HEADER, replyCost, sessionStats, csvRow, mergeRows, run, loadBoard } = require('../hooks/ponytail-band-import');
 
 // The import writes the band's own columns.
 const metrics = fs.readFileSync(path.join(root, 'hooks', 'band', 'metrics.ts'), 'utf8');
@@ -139,8 +140,19 @@ async function main() {
   console.log('band import checks passed');
 }
 
+// The board's month periods span whole calendar days (dietrichgebert/ponytail#1382). Here and not in band.test.tsx:
+// the engine's test sandbox refuses to evaluate the page's script, so node runs its monthKeys.
+async function monthPeriods() {
+  const { boardHtml } = await loadBoard();
+  const now = Date.UTC(2026, 10, 9, 12, 0);
+  const src = /function monthKeys[\s\S]*?\n  }\n/.exec(boardHtml([], now))?.[0] ?? '';
+  assert.ok(src !== '', 'the board script defines monthKeys');
+  const keys = JSON.parse(vm.runInNewContext(`${src}; JSON.stringify([monthKeys(0, 9), monthKeys(-1), monthKeys(-2)])`, { now, dayKey: ms => new Date(ms).toLocaleDateString('en-CA') }));
+  assert.deepStrictEqual(keys.map(k => [k[0], k[k.length - 1], k.length]), [['2026-11-01', '2026-11-09', 9], ['2026-10-01', '2026-10-31', 31], ['2026-09-01', '2026-09-30', 30]]);
+}
+
 // The band's own writer locks a ledger directory it makes: tests/band.test.tsx.
-main().catch(err => {
+main().then(monthPeriods).catch(err => {
   console.error(err);
   process.exit(1);
 });
