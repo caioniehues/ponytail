@@ -32,10 +32,9 @@ You have READ access upstream; issues and labels are tracked on the fork (see `d
 
 ## Open work, in priority order
 
-1. **Next upstream batch: codebase map** (see item 2). The uninstall/config batch landed in the fourth session: #1395 #1282 #1264 #1258 #1269 #1276 as picked (messages now cite `dietrichgebert/ponytail#<n>`), plus a fork fix so uninstall removes `ponytail-sessions/`.
+1. **Next upstream batch: hosts** (see item 2). The codebase-map batch landed in the fourth session: all 11 picked, with hand merges noted in each commit (#1243 + #1391 read the resolved file's head through `openSync`; #1273's PHP class pattern uses `[ \t]` like #1368; #1245 keeps the 40-character name cap; #1260 + #1284 parse then clamp the budget).
 2. **Remaining upstream batches, not yet reviewed:**
-   - Codebase map (next): #1435 #1391 #1370 #1368 #1284 #1273 #1271 #1260 #1245 #1243 #1323.
-   - Hosts: #1420 #1410 #1232 #1262 #1168 #1281 #1234 #1201 #1202.
+   - Hosts (next): #1420 #1410 #1232 #1262 #1168 #1281 #1234 #1201 #1202.
    - Ledger correctness: #1399 or #1328, one of #1235/#1217/#1210, #1214, #1347 or #1402.
    - Rules and skills (need benchmarks): #1423 #1388 #1193 #1383 #1360 #1335.
    - Spam to ignore: #1405 (crypto token), #1436, #1415, #1429, #1406, #1430, #1411.
