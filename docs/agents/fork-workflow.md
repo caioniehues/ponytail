@@ -5,6 +5,7 @@ How this fork (`origin` = caioniehues/ponytail) takes work from `upstream` = Die
 ## Checks
 
 - `npm run check` runs everything CI runs except the benchmark selftest: rule copies, versions, `check:plugin`, `npm test`, `test:band`. Green is the baseline; a failure is yours.
+- `npm test` needs pandas (`tests/correctness.test.js` runs a pandas one-liner): `sudo pacman -S python-pandas` here, not pip (the system Python refuses it).
 - `npm run check:plugin` (`scripts/check-plugin.js`) runs `claude plugin validate` and fails on its warnings, which carry the TypeScript errors in `hooks/band/` and `tests/band.test.tsx` against the engine's own types. A warning that is fine on purpose goes in its `ACCEPTED` list with the reason.
 - Old engines: `npx -y @anthropic-ai/claude-code@<v> plugin test`. CI pins one version in `test.yml`; `engine-latest.yml` runs the band checks on the newest release each Monday (and on demand).
 - Editor types: `.claude-plugin/types/claude-code/index.d.ts` and the root `tsconfig.json` are gitignored and local. The engine writes them when it loads the band from this folder (`claude --plugin-dir .`); otherwise copy `types/claude-code.d.ts` from the plugin-authoring skill's folder over that file after a Claude Code update. Stale types show up as diagnostics that `check:plugin` doesn't report.
