@@ -15,7 +15,7 @@ You have READ access upstream; issues and labels are tracked on the fork (see `d
     - `e2d65f7` `ponytail-sessions/` pruned: files idle 30 days go at a fresh SessionStart (never compact/resume) and when the OpenCode plugin loads (V2 `setup`, V1 `server`). Helper `hooks/ponytail-prune.js`.
     - `fadc8e7` comment: the `writeBoard` upper-case probe can't misfire (`dir` is always `ledgerDir()`, ending in lower-case `/ponytail/band`).
   - Second session, test-run batch `e0955ca..1dcb607`: #1397 (runner must be the command; by design `sudo npm test` and `npx --yes vitest` no longer count), #1336 (squashed; jest/vitest count tests, not suites), #1441 (Vue), #1351 (PHP/JVM; its package-lock dropped), `4b44d88` (new languages added to `DEF_PATHS`, test checks both directions), #1414 (PowerShell) and #1227 (Swift/Xcode MCP; plus `test-without-building`) ported from the `tool.call` hook to `toolsSummary`.
-- Left out on purpose: #1163 (breaks `clawhub` on Windows), #1322 (dup of #1407), duplicate `base()` PRs #1355 #1204 #1203 #1192 #1179, other per-session/Codex mode PRs #1366 #1175 #1174 #1331 #1325.
+- Left out on purpose: #1235 and #1210 (same fix as #1217 plus a parseLedger and status warnings for rows only a hand edit makes), #1347 (#1402 fixes the same /clear cost and the $0 after a reload, in fewer lines), #1163 (breaks `clawhub` on Windows), #1322 (dup of #1407), duplicate `base()` PRs #1355 #1204 #1203 #1192 #1179, other per-session/Codex mode PRs #1366 #1175 #1174 #1331 #1325.
 - Measured and left: the three transcript greps per turn (#1401) cost about 45 ms on a 12 MB transcript (4.6 + 16.1 + 7.4 ms grep, 19 ms parse). A saved byte offset isn't worth its state handling yet; the `shortcut:` notes in `register.tsx` record it.
 
 ## Test baseline on main
@@ -32,10 +32,9 @@ You have READ access upstream; issues and labels are tracked on the fork (see `d
 
 ## Open work, in priority order
 
-1. **Next upstream batch: ledger correctness** (see item 2); it needs a choice between overlapping PRs first. The hosts batch landed in the fourth session: all 9 picked. #1420 moves Claude Code's SessionStart context to hookSpecificOutput JSON (the fork's resume tests read it from there, `c0226d5`); #1262 is ported so a typed "stop ponytail" turns off only its own OpenCode session; #1232's test and #1234's test were adapted to per-session levels and to #1281's status clear.
+1. **Next upstream batch: rules and skills** (see item 2); they change the shipped ruleset, so each needs a benchmark run before it lands. The ledger batch landed in the fourth session: #1217, #1399, #1328, #1214 (applied as its net diff: its head merges upstream main) and #1402.
 2. **Remaining upstream batches, not yet reviewed:**
-   - Ledger correctness (next): #1399 or #1328, one of #1235/#1217/#1210, #1214, #1347 or #1402.
-   - Rules and skills (need benchmarks): #1423 #1388 #1193 #1383 #1360 #1335.
+   - Rules and skills (next, need benchmarks): #1423 #1388 #1193 #1383 #1360 #1335.
    - Spam to ignore: #1405 (crypto token), #1436, #1415, #1429, #1406, #1430, #1411.
 3. **Unverified, needs live hosts:** do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
 4. **Smells (judgement calls):** folder-name logic duplicated (`base` in register.tsx, `tasksFrom` in board.ts), and the grep-or-read fallback (`readTitle`/`readModel`/`readTools`); `package-lock.json` locks no dependencies; `band-webhook-names.test.js` and `band-import.test.js` assert on source text.
