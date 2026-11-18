@@ -320,7 +320,7 @@ export const MODEL_PATTERN = '"model":"claude-[^"]*"'
 // The model that wrote most replies, from grep -o lines like "model":"claude-opus-5-5". Empty when none.
 export function mainModel(grepOut: string): string {
   const count = new Map<string, number>()
-  for (const m of grepOut.matchAll(/"model":"(claude-[^"]+)"/g)) count.set(m[1], (count.get(m[1]) ?? 0) + 1)
+  for (const [, model = ''] of grepOut.matchAll(/"model":"(claude-[^"]+)"/g)) count.set(model, (count.get(model) ?? 0) + 1)
   return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
 }
 

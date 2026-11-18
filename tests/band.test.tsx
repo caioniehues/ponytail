@@ -1,4 +1,6 @@
+import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 
 import { BAND_SESSION } from './fixtures/band-session'
 
@@ -56,9 +58,9 @@ test('definition and caller searches skip binary files', async ($, on) => {
   on('fs.exists', ($, e) => ({ value: e.path === transcript }))
   const searches: string[][] = []
   on('process.run', ($, e) => {
-    if (e.argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '' } }
+    if (e.argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (e.argv[0] === 'git' && e.argv[1] === 'grep') searches.push([...e.argv])
-    return { value: { exitCode: 1, stdout: '', stderr: '' } } as never
+    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
   on('fs.read', () => ({ deny: 'missing' }) as never)
   on('fs.list', () => ({ value: [] }))
@@ -453,9 +455,12 @@ describe('metrics', () => {
   })
 })
 
+// A slash command as the person types it at the prompt.
+const typed = (command: string) => ({ command, args: '', origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 80 } })
+
 const BAND = {
   component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 12 }, view: {} },
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 12 }, view: {} },
 } as const
 
 test('the band switches between compact and details on terminal and desktop', async ($, on) => {
@@ -545,9 +550,9 @@ for (const command of ['clear', 'resume', 'branch']) {
       return { text: '' }
     })
     const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'terminal', ...BAND })
-    await $.command.run({ command: 'help', args: '' })
+    await $.command.run(typed('help'))
     expect(await ui.find({ key: 'level', text: /full/ })).toBeUndefined()
-    await $.command.run({ command, args: '' })
+    await $.command.run(typed(command))
     expect(await ui.find({ key: 'level', text: /full/ })).toBeDefined()
     await ui.unmount()
   })
@@ -557,7 +562,7 @@ test("another plugin's command runs without the band's hook, so its output is no
   let reads = 0
   on('session.id', () => (reads++, { value: 's1' }))
   on('command.run', () => ({ text: '' }))
-  await $.command.run({ command: 'anymodel', args: '' })
+  await $.command.run(typed('anymodel'))
   expect(reads).toBe(0)
 })
 
@@ -570,7 +575,7 @@ test('the ledger is written on Windows, where there is no mkdir', async ($, on) 
   on('session.id', () => ({ value: 's1' }))
   on('session.turns', () => ({ value: 1 }))
   on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0.5 } } }) as never)
-  on('process.run', ($, e) => (e.argv[0] === 'mkdir' ? { deny: 'mkdir: not found' } : ({ value: { exitCode: 1, stdout: '', stderr: '' } } as never)))
+  on('process.run', ($, e) => (e.argv[0] === 'mkdir' ? { deny: 'mkdir: not found' } : ({ value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never)))
   on('fs.read', () => ({ deny: 'missing' }) as never)
   on('fs.list', () => ({ value: [] }))
   const written: string[] = []
@@ -809,10 +814,10 @@ test('a turn reads the tests, reuse and stale tests out of its transcript', asyn
   })
   on('process.run', ($, e) => {
     const argv = e.argv
-    if (argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '' } }
-    if (argv.includes('-nE')) return { value: { exitCode: 0, stdout: '/repo/src/money.ts:1:export function lineTotal(items: number[]) {\n', stderr: '' } }
-    if (argv[0] === 'git') return { value: { exitCode: 0, stdout: '/repo/src/app.ts:3:  legacy(cart)', stderr: '' } }
-    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+    if (argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    if (argv.includes('-nE')) return { value: { exitCode: 0, stdout: '/repo/src/money.ts:1:export function lineTotal(items: number[]) {\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    if (argv[0] === 'git') return { value: { exitCode: 0, stdout: '/repo/src/app.ts:3:  legacy(cart)', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }))
@@ -831,7 +836,7 @@ test('a turn reads the tests, reuse and stale tests out of its transcript', asyn
 })
 
 // A turn whose Edit removes two definitions: `legacy` is still called, `stale` is defined again in another file.
-async function removeTwo($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters<Parameters<typeof test>[1]>[1]) {
+async function removeTwo($: Engine, on: On) {
   const transcript = '/home/u/.claude/projects/-repo/s1.jsonl'
   const OLD = 'export function legacy(cart: Cart) {\n  return 0\n}\nexport function stale() {\n  return 1\n}'
   const toolLines = [
@@ -860,13 +865,13 @@ async function removeTwo($: Parameters<Parameters<typeof test>[1]>[0], on: Param
   const callerSearches: string[][] = []
   on('process.run', ($, e) => {
     const argv = e.argv
-    if (argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '' } }
+    if (argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (argv[0] === 'git' && argv[1] === 'grep' && !argv.includes('-nE')) {
       callerSearches.push([...argv])
       const lines = [...new Set(Object.entries(found).flatMap(([name, ls]) => (argv.includes(name) ? ls : [])))].sort()
-      return { value: { exitCode: lines.length > 0 ? 0 : 1, stdout: lines.join('\n'), stderr: '' } }
+      return { value: { exitCode: lines.length > 0 ? 0 : 1, stdout: lines.join('\n'), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     }
-    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }))
@@ -916,7 +921,7 @@ test('without grep (Windows) a turn still reads the tests and the model from the
     if (e.path.endsWith('repo.csv')) rows.push(e.text)
     return { value: undefined }
   })
-  on('process.run', ($, e) => (e.argv[0] === 'grep' ? { deny: 'grep: not found' } : { value: { exitCode: 1, stdout: '', stderr: '' } }) as never)
+  on('process.run', ($, e) => (e.argv[0] === 'grep' ? { deny: 'grep: not found' } : { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }) as never)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }))
   const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'terminal', ...BAND })
@@ -937,8 +942,8 @@ test('the start-up definition search reads only the source files the band parses
   on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0 } } }) as never)
   const searches: string[][] = []
   on('process.run', ($, e) => {
-    if (e.argv[0] === 'git' && e.argv[1] === 'grep') searches.push(e.argv)
-    return { value: { exitCode: 1, stdout: '', stderr: '' } } as never
+    if (e.argv[0] === 'git' && e.argv[1] === 'grep') searches.push([...e.argv])
+    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
   on('fs.read', () => ({ deny: 'missing' }) as never)
   on('fs.list', () => ({ value: [] }))
