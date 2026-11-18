@@ -229,11 +229,16 @@ async function definitions($: EngineInterface): Promise<Map<string, string>> {
   return grep?.exitCode === 0 ? parseDefs(grep.stdout) : new Map()
 }
 
-// Sets the band up for a session (level, project, task row, cost baseline); returns the definitions that exist now,
-// or none while the band is hidden: the first turn it is shown searches for them.
-async function start($: EngineInterface): Promise<Map<string, string> | undefined> {
+// The definitions that existed when the session started, still being searched for; none while the band was hidden.
+type Known = Promise<Map<string, string> | undefined>
+
+// Sets the band up for a session (level, project, task row, cost baseline); returns the search for the definitions that
+// exist now, started and not awaited: session.start holds the engine's initialize reply, and in a large repo the search
+// takes seconds (dietrichgebert/ponytail#1404). None while the band is hidden: the first turn it is shown searches for them.
+// Wrapped in an object: an async function that returned the promise itself would wait for it.
+async function start($: EngineInterface): Promise<{ known: Known }> {
   const hidden = await bandHidden($)
-  const known = hidden ? undefined : await definitions($)
+  const known: Known = hidden ? Promise.resolve(undefined) : definitions($)
   const level = await readLevel($)
   const details = (await $.store.get('details')) === true
   const repo = await $.session.repo().catch(() => null)
@@ -246,15 +251,15 @@ async function start($: EngineInterface): Promise<Map<string, string> | undefine
   const key = usage ? taskKey(session, usage.startedAt) : ''
   // Another session (/resume, /branch) starts its own counters; its row brings back what it had.
   await update($, band, b => resume({ ...EMPTY, ...(b.session === session ? b : { ...b, ...TASK }), level, details, project, session, cost: usage?.cost?.usd ?? b.cost }, csv, key))
-  return known
+  return { known }
 }
 
 export const register: Register = (on, options) => {
-  // Definitions that existed when the session started: what new code can reuse. Unset while the band was hidden.
-  let known: Map<string, string> | undefined
+  // Definitions that existed when the session started: what new code can reuse. Only a shown turn's reuse count awaits them.
+  let known: Known = Promise.resolve(undefined)
 
   on('session.start', async ($, e, next) => {
-    known = await start($)
+    known = (await start($)).known
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -267,7 +272,7 @@ export const register: Register = (on, options) => {
   on('command.run', { command: ['clear', 'resume', 'branch'] }, async ($, e, next) => {
     const session = await $.session.id()
     const result = await next(e)
-    if ((await $.session.id()) !== session) known = await start($).catch(() => known)
+    if ((await $.session.id()) !== session) known = (await start($).catch(() => ({ known }))).known
     return result
   }).catch(($, e, next) => next(e))
 
@@ -331,14 +336,16 @@ export const register: Register = (on, options) => {
     const model = await readModel($, transcript)
     const calls = await readCalls($, transcript)
     const root = (await $.session.repo().catch(() => null))?.root ?? (await $.session.cwd())
-    if (known === undefined) {
+    let defs = await known
+    if (defs === undefined) {
       // The start-up search a hidden band skipped runs at its first shown turn. What the task wrote while hidden is in
       // the tree by now: it is the task's own, so new code calling it is not reuse.
       // shortcut: the tree as it is when shown, so code changed outside tool calls while hidden (a pull, a checkout) counts as there before, and a name the task created hides an older one of that name elsewhere; key known by file too if that bites.
       const created = calls === undefined ? [] : toolsSummary(calls, root, new Map()).created
-      known = new Map([...(await definitions($))].filter(([name]) => !created.includes(name)))
+      defs = new Map([...(await definitions($))].filter(([name]) => !created.includes(name)))
+      known = Promise.resolve(defs)
     }
-    const tools = calls === undefined ? undefined : toolsSummary(calls, root, known)
+    const tools = calls === undefined ? undefined : toolsSummary(calls, root, defs)
     const removed = tools?.removed ?? stored
 
     // A removed or renamed definition that is not defined again but still called somewhere.

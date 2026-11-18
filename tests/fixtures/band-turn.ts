@@ -13,7 +13,8 @@ export const ran = (exitCode: number, stdout = '') => ({ value: { exitCode, stdo
 
 // A band test's session: the band flag, a transcript per session, and every command and write the band makes.
 // ledger: the ledger folder exists already. title: the session's sidebar name in its transcript.
-export function bandSession(on: On, state: { hidden: boolean; usd: number; calls?: string; defs?: string; ledger?: boolean; title?: string }) {
+// held: the definitions grep answers only once this settles.
+export function bandSession(on: On, state: { hidden: boolean; usd: number; calls?: string; defs?: string; ledger?: boolean; title?: string; held?: Promise<unknown> }) {
   let session = 's1'
   const transcript = () => `/home/u/.claude/projects/-repo/${session}.jsonl`
   on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
@@ -33,11 +34,13 @@ export function bandSession(on: On, state: { hidden: boolean; usd: number; calls
   // The fixture's tool calls: an Edit that removes `legacy`, so a shown turn searches for its callers.
   const toolLines = BAND_SESSION.split('\n').filter(line => line.includes(TOOL_USE_RECORD) || line.includes(TOOL_RESULT_RECORD)).join('\n')
   const runs: string[][] = []
-  on('process.run', ($, e) => {
+  on('process.run', async ($, e) => {
     runs.push([...e.argv])
     if (e.argv.includes(TITLE_RECORD) && state.title !== undefined) return ran(0, JSON.stringify({ type: 'custom-title', customTitle: state.title })) as never
     if (e.argv.includes(TOOL_USE_RECORD)) return ran(0, state.calls ?? toolLines) as never
-    return (e.argv.includes('-nE') && state.defs !== undefined ? ran(0, state.defs) : ran(1)) as never
+    if (!e.argv.includes('-nE')) return ran(1) as never
+    await state.held
+    return (state.defs !== undefined ? ran(0, state.defs) : ran(1)) as never
   })
   on('command.run', () => {
     session = 's2'

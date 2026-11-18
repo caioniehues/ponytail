@@ -752,6 +752,27 @@ test('a definition the task wrote while the band was hidden is new, not reused, 
   expect([field('reused'), field('new')]).toEqual(['1', '2'])
 })
 
+test('the start and /clear settle while the definitions grep runs, and a turn under way when it lands still counts reuse', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  let releaseGrep = () => {}
+  const held = new Promise<void>(resolve => (releaseGrep = resolve))
+  // The fixture's Edit calls lineTotal, defined before the task.
+  const defs = 'src/money.ts:1:export function lineTotal(items: number[]) {\n'
+  const state = { hidden: false, usd: 0.5, defs, held }
+  const { searches, writes } = bandSession(on, state)
+  // A start that waits for the grep never settles: the test times out.
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  expect(searches().filter(argv => argv.includes('-nE'))).toHaveLength(1)
+  const turn = $.turn.complete({ answer: '', durationMs: 1000 } as never)
+  releaseGrep()
+  await turn
+  expect(ledgerField(writes)('reused')).toBe('1')
+  state.held = new Promise<void>(() => {})
+  await $.command.run(typed('clear'))
+  expect(searches().filter(argv => argv.includes('-nE'))).toHaveLength(2)
+})
+
 // The webhook gets the task's name only when sendNames is on. Unset, a load fills in the manifest's default (off).
 for (const sendNames of [undefined, true]) {
   const options = { webhookUrl: 'https://board.example.com/tasks', ...(sendNames === undefined ? {} : { sendNames }) }
