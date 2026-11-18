@@ -39,24 +39,28 @@ import {
 test('definition and caller searches skip binary files', async ($, on) => {
   mock.clock(on)
   mock.store(on)
+  const transcript = '/home/u/.claude/projects/-repo/s1.jsonl'
+  // The fixture's Edit removes `legacy`, so the turn searches for its callers.
+  const toolLines = BAND_SESSION.split('\n').filter(line => line.includes(TOOL_USE_RECORD) || line.includes(TOOL_RESULT_RECORD)).join('\n')
   on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
-  on('session.repo', () => ({ value: { root: '/repo/shop' } }) as never)
+  on('session.repo', () => ({ value: { root: '/repo' } }) as never)
+  on('session.root', () => ({ value: '-repo' }))
   on('session.id', () => ({ value: 's1' }))
   on('session.turns', () => ({ value: 1 }))
   on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0 } } }) as never)
+  on('fs.exists', ($, e) => ({ value: e.path === transcript }))
   const searches: string[][] = []
   on('process.run', ($, e) => {
-    if (e.argv[0] === 'git' && e.argv[1] === 'grep') searches.push(e.argv)
+    if (e.argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '' } }
+    if (e.argv[0] === 'git' && e.argv[1] === 'grep') searches.push([...e.argv])
     return { value: { exitCode: 1, stdout: '', stderr: '' } } as never
   })
   on('fs.read', () => ({ deny: 'missing' }) as never)
   on('fs.list', () => ({ value: [] }))
   on('fs.write', () => ({ value: undefined }))
-  on('tool.call', { tool: 'Edit' }, () => ({ result: {}, text: 'ok' }) as never)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }))
-  await $.session.start({ cwd: '/repo/shop', surface: null } as never)
-  await $.tool.call({ tool: 'Edit', file_path: '/repo/shop/cart.py', old_string: 'def total(items):\n    return sum(items)\n', new_string: '', replace_all: false } as never)
+  await $.session.start({ cwd: '/repo', surface: null } as never)
   await $.turn.complete({ answer: '', durationMs: 1000 } as never)
   expect(searches.map(argv => argv.includes('-I'))).toEqual([true, true])
 })
