@@ -20,7 +20,7 @@ You have READ access upstream; issues and labels are tracked on the fork (see `d
 
 ## Test baseline on main
 
-- `npm run check` is fully green: rule copies, versions, `check:plugin`, `npm test` 159/159 (pandas is now installed locally), band suite 54/54 on 2.1.327. Details in `docs/agents/fork-workflow.md`.
+- `npm run check` is fully green: rule copies, versions, `check:plugin`, `npm test` 159/159 (pandas is now installed locally), band suite 55/55 on 2.1.327. Details in `docs/agents/fork-workflow.md`.
 
 ## Third session: the retro's environment fixes (`f9f7d99..14cac50`, pushed)
 

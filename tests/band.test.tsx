@@ -43,6 +43,9 @@ import {
   webhookRequest,
 } from '../hooks/band/metrics'
 
+// A mocked process.run answer.
+const ran = (exitCode: number, stdout = '') => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+
 test('definition and caller searches skip binary files', async ($, on) => {
   mock.clock(on)
   mock.store(on)
@@ -58,9 +61,9 @@ test('definition and caller searches skip binary files', async ($, on) => {
   on('fs.exists', ($, e) => ({ value: e.path === transcript }))
   const searches: string[][] = []
   on('process.run', ($, e) => {
-    if (e.argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    if (e.argv.includes(TOOL_USE_RECORD)) return ran(0, toolLines)
     if (e.argv[0] === 'git' && e.argv[1] === 'grep') searches.push([...e.argv])
-    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
+    return ran(1) as never
   })
   on('fs.read', () => ({ deny: 'missing' }) as never)
   on('fs.list', () => ({ value: [] }))
@@ -339,6 +342,31 @@ describe('metrics', () => {
     for (const line of ['$x = total();', 'echo "public";', 'return enum;']) expect(grep.test(line)).toBe(false)
   })
 
+  test('the grep keeps every line a definition rule reads, so start-up finds what a turn would', () => {
+    const grep = new RegExp(GREP_DEFS.replace(/\[\[:space:\]\]/g, '\\s'))
+    const samples: [string, string][] = [
+      ['Sources/Cart.swift', 'struct Cart {'],
+      ['Sources/Cart.swift', 'protocol Priced {'],
+      ['Sources/Cart.swift', 'actor Store {'],
+      ['Sources/Cart.swift', 'open class Base {'],
+      ['Sources/Cart.swift', 'internal func total() -> Int {'],
+      ['Sources/Cart.swift', 'fileprivate func round() {'],
+      ['Sources/Cart.swift', 'nonisolated func id() -> String {'],
+      ['Sources/Cart.swift', 'package func share() {'],
+      ['src/money.py', 'async def fetch_rate():'],
+      ['src/money.ts', 'export default async function convert() {'],
+      ['src/money.go', 'func (m Money) Cents() int {'],
+      ['src/money.rs', 'pub async fn cents() -> i64 {'],
+      ['lib/money.rb', '  def self.cents'],
+      ['src/Money.php', 'final class Money {'],
+      ['src/Money.java', 'public final class Money {'],
+    ]
+    for (const [file, line] of samples) {
+      expect([file, defsIn(file, line).length > 0]).toEqual([file, true])
+      expect([line, grep.test(line)]).toEqual([line, true])
+    }
+  })
+
   test('PHP methods from git grep become known helpers, so calling them counts as reuse', () => {
     const known = parseDefs('src/Money.php:7:    public static function toCents($v) {\nsrc/Money.php:2:final class Money {\ntests/MoneyTest.php:5:    public function testIt() {')
     expect(known.get('toCents')).toBe('src/Money.php:7')
@@ -575,7 +603,7 @@ test('the ledger is written on Windows, where there is no mkdir', async ($, on) 
   on('session.id', () => ({ value: 's1' }))
   on('session.turns', () => ({ value: 1 }))
   on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0.5 } } }) as never)
-  on('process.run', ($, e) => (e.argv[0] === 'mkdir' ? { deny: 'mkdir: not found' } : ({ value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never)))
+  on('process.run', ($, e) => (e.argv[0] === 'mkdir' ? { deny: 'mkdir: not found' } : (ran(1) as never)))
   on('fs.read', () => ({ deny: 'missing' }) as never)
   on('fs.list', () => ({ value: [] }))
   const written: string[] = []
@@ -814,10 +842,10 @@ test('a turn reads the tests, reuse and stale tests out of its transcript', asyn
   })
   on('process.run', ($, e) => {
     const argv = e.argv
-    if (argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    if (argv.includes('-nE')) return { value: { exitCode: 0, stdout: '/repo/src/money.ts:1:export function lineTotal(items: number[]) {\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    if (argv[0] === 'git') return { value: { exitCode: 0, stdout: '/repo/src/app.ts:3:  legacy(cart)', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    if (argv.includes(TOOL_USE_RECORD)) return ran(0, toolLines)
+    if (argv.includes('-nE')) return ran(0, '/repo/src/money.ts:1:export function lineTotal(items: number[]) {\n')
+    if (argv[0] === 'git') return ran(0, '/repo/src/app.ts:3:  legacy(cart)')
+    return ran(1)
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }))
@@ -865,13 +893,13 @@ async function removeTwo($: Engine, on: On) {
   const callerSearches: string[][] = []
   on('process.run', ($, e) => {
     const argv = e.argv
-    if (argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    if (argv.includes(TOOL_USE_RECORD)) return ran(0, toolLines)
     if (argv[0] === 'git' && argv[1] === 'grep' && !argv.includes('-nE')) {
       callerSearches.push([...argv])
       const lines = [...new Set(Object.entries(found).flatMap(([name, ls]) => (argv.includes(name) ? ls : [])))].sort()
-      return { value: { exitCode: lines.length > 0 ? 0 : 1, stdout: lines.join('\n'), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+      return ran(lines.length > 0 ? 0 : 1, lines.join('\n'))
     }
-    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    return ran(1)
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }))
@@ -921,7 +949,7 @@ test('without grep (Windows) a turn still reads the tests and the model from the
     if (e.path.endsWith('repo.csv')) rows.push(e.text)
     return { value: undefined }
   })
-  on('process.run', ($, e) => (e.argv[0] === 'grep' ? { deny: 'grep: not found' } : { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }) as never)
+  on('process.run', ($, e) => (e.argv[0] === 'grep' ? { deny: 'grep: not found' } : ran(1)) as never)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }))
   const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'terminal', ...BAND })
@@ -943,7 +971,7 @@ test('the start-up definition search reads only the source files the band parses
   const searches: string[][] = []
   on('process.run', ($, e) => {
     if (e.argv[0] === 'git' && e.argv[1] === 'grep') searches.push([...e.argv])
-    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
+    return ran(1) as never
   })
   on('fs.read', () => ({ deny: 'missing' }) as never)
   on('fs.list', () => ({ value: [] }))

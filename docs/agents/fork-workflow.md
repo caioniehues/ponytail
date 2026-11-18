@@ -24,7 +24,7 @@ How this fork (`origin` = caioniehues/ponytail) takes work from `upstream` = Die
 
 ## Band code
 
-- A new language needs three places: `DEFS`, `DEF_PATHS` (start-up search globs) and `isSource`'s skip rules. The #1443 test catches a missing glob for the languages it lists.
+- A new language needs four places: `DEFS`, `GREP_DEFS` (the start-up grep keeps only lines starting with its keywords), `DEF_PATHS` (start-up search globs) and `isSource`'s skip rules. Tests catch a missing glob (#1443) and a keyword `GREP_DEFS` drops, for the sample lines they list: add the new language's to both.
 - Known limits are written `// shortcut: <limit>, <when to upgrade>`; `/ponytail-debt` harvests them.
 - `AGENTS.md` is the shipped product ruleset: agent config stays out of it, and it stays in sync with `skills/ponytail/SKILL.md` (`scripts/check-rule-copies.js`).
 

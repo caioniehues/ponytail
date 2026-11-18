@@ -30,7 +30,7 @@ const DEFS: [RegExp, RegExp[]][] = [
 ]
 
 // Lines worth a closer look; the per-language regexes above decide.
-export const GREP_DEFS = '^[[:space:]]*(export|async|def|class|function|func|pub|fn|public|protected|private|static|abstract|final|readonly|interface|trait|enum|record)[[:space:]]'
+export const GREP_DEFS = '^[[:space:]]*(export|async|def|class|function|func|pub|fn|public|protected|private|static|abstract|final|readonly|interface|trait|enum|record|struct|protocol|actor|open|internal|fileprivate|nonisolated|package)[[:space:]]'
 
 // Pathspecs for that grep: only the files DEFS reads, so saved HTML and minified bundles are never scanned (#1443).
 export const DEF_PATHS = [
