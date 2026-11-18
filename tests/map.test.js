@@ -172,6 +172,7 @@ execFileSync('git', ['init', '-q'], { cwd: big });
 execFileSync('git', ['add', '-A'], { cwd: big });
 const out = execFileSync(process.execPath, [path.join(__dirname, '..', 'hooks', 'ponytail-map.js'), big]).toString();
 assert.ok(out.includes('zz/utils/: slugify'), out);
+fs.rmSync(big, { recursive: true, force: true });
 
 {
   // A PONYTAIL_MAP_CHARS that is not a positive number falls back to 2000: NaN would remove the cap.
