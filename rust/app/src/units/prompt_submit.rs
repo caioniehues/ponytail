@@ -78,7 +78,7 @@ fn respond(payload: &Value) -> Option<String> {
         files.clear_mode().ok()?;
         return Some(format!("PONYTAIL MODE OFF{note}"));
     }
-    files.set_mode(level).ok()?;
+    files.set_mode(&level.to_string()).ok()?;
     let header = format!("PONYTAIL MODE CHANGED — level: {level}{note}");
     // A pick in the band loads no skill body, so the new level's ruleset comes with it.
     Some(if from_band {
@@ -116,7 +116,9 @@ fn take_pending(session_id: Option<&Value>) -> Result<Option<Level>, ()> {
 
 /// `/^[/@$]ponytail/`: the prompt after its `/ponytail`, `@ponytail` or `$ponytail`.
 fn after_ponytail(prompt: &str) -> Option<&str> {
-    prompt.strip_prefix(['/', '@', '$'])?.strip_prefix("ponytail")
+    prompt
+        .strip_prefix(['/', '@', '$'])?
+        .strip_prefix("ponytail")
 }
 
 /// `/^[/@$]ponytail(:ponytail)?(\s|$)/`: the prompt is a level command, so it wins over a pick in the band.

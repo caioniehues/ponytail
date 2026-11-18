@@ -133,6 +133,16 @@ pub fn to_number(text: &str) -> f64 {
     text.parse().unwrap_or(f64::NAN)
 }
 
+/// `path.posix.join`: the parts that are not empty, joined by `/` and normalized.
+pub fn join(parts: &[&str]) -> String {
+    let parts: Vec<&str> = parts
+        .iter()
+        .copied()
+        .filter(|part| !part.is_empty())
+        .collect();
+    normalize(&parts.join("/"))
+}
+
 /// `path.posix.normalize`: `.` and `..` resolved, slashes collapsed, a trailing slash kept.
 pub fn normalize(path: &str) -> String {
     if path.is_empty() {
@@ -163,6 +173,8 @@ pub fn normalize(path: &str) -> String {
 
 /// A JS regex literal's source (no u flag) in the regex crate's syntax: `\s` is JS whitespace, `\w` is ASCII, and a
 /// `[` inside a class is a literal. Flags: `m` and `i`.
+// shortcut: `\S` is JS's only outside a class (inside one it is the crate's Unicode `\S`); translate it there too when a
+// pattern puts it in a class.
 pub fn regex(source: &str, flags: &str) -> Regex {
     let space = SPACE;
     let mut out = String::new();
@@ -173,6 +185,11 @@ pub fn regex(source: &str, flags: &str) -> Regex {
             '\\' => match chars.next() {
                 Some('s') if in_class => out.push_str(&space[1..space.len() - 1]),
                 Some('s') => out.push_str(space),
+                Some('S') if !in_class => {
+                    out.push_str("[^");
+                    out.push_str(&space[1..space.len() - 1]);
+                    out.push(']');
+                }
                 Some('w') if in_class => out.push_str("0-9A-Za-z_"),
                 Some('w') => out.push_str("[0-9A-Za-z_]"),
                 Some(escaped) => {

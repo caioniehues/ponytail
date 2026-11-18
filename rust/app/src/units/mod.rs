@@ -2,6 +2,7 @@
 
 mod map;
 mod prompt_submit;
+mod session_start;
 mod subagent_start;
 
 use std::ffi::OsString;
@@ -18,6 +19,7 @@ pub fn dispatch(command: &str, matches: &ArgMatches) -> Option<ExitCode> {
     match (command, first.and_then(|arg| arg.to_str())) {
         ("hook", Some("subagent-start")) => Some(subagent_start::run()),
         ("hook", Some("prompt-submit")) => Some(prompt_submit::run()),
+        ("hook", Some("session-start")) => Some(session_start::run()),
         ("map", _) => Some(map::run(first.map(OsString::as_os_str))),
         _ => None,
     }

@@ -5,8 +5,8 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
-use crate::level::Level;
 use crate::{js, sha256};
 
 /// The files that hold one hook's level, from the session and the project Claude Code names.
@@ -55,16 +55,16 @@ impl LevelFiles {
         None
     }
 
-    /// `setMode`: the session's file, the project's and the shared flag, which the statusline and the band read.
-    pub fn set_mode(&self, level: Level) -> io::Result<()> {
-        let level = level.to_string();
+    /// `setMode`: the session's file, the project's and the shared flag, which the statusline and the band read. The
+    /// text is written as it is: a resumed session writes back whatever its file held.
+    pub fn set_mode(&self, mode: &str) -> io::Result<()> {
         for file in self
             .session
             .iter()
             .chain(&self.project)
             .chain([&self.shared])
         {
-            write_file(file, &level)?;
+            write_file(file, mode)?;
         }
         Ok(())
     }
@@ -90,12 +90,47 @@ pub fn write_file(file: &Path, text: &str) -> io::Result<()> {
     fs::write(file, text)
 }
 
-/// `getClaudeDir`: CLAUDE_CONFIG_DIR, as Claude Code reads it, else ~/.claude.
-pub fn claude_dir() -> PathBuf {
-    match js::env("CLAUDE_CONFIG_DIR") {
-        dir if !dir.is_empty() => PathBuf::from(dir),
-        _ => home().join(".claude"),
+/// How long a session file nobody writes is kept (SESSION_MAX_AGE_MS in ponytail-prune.js).
+const SESSION_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 3600);
+
+/// `pruneSessions`: a fresh start drops the session files nothing has written for 30 days, since nothing else deletes
+/// them. A missing folder is nothing to do.
+pub fn prune_sessions() {
+    prune_stale(&claude_dir().join("ponytail-sessions"));
+}
+
+/// `pruneStale`: drops the files in `dir` that nothing has written for SESSION_MAX_AGE.
+fn prune_stale(dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let Some(cutoff) = SystemTime::now().checked_sub(SESSION_MAX_AGE) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file = entry.path();
+        // statSync follows a symlink; unlinking a folder fails, as in JS.
+        if fs::metadata(&file)
+            .and_then(|meta| meta.modified())
+            .is_ok_and(|modified| modified < cutoff)
+        {
+            let _ = fs::remove_file(&file);
+        }
     }
+}
+
+/// `getClaudeDir` as the JS string the session-start messages name: CLAUDE_CONFIG_DIR as set, as Claude Code reads it,
+/// else path.join(os.homedir(), '.claude').
+pub fn claude_dir_name() -> String {
+    match js::env("CLAUDE_CONFIG_DIR") {
+        dir if !dir.is_empty() => dir,
+        _ => js::join(&[&home().to_string_lossy(), ".claude"]),
+    }
+}
+
+/// [`claude_dir_name`] as a path.
+pub fn claude_dir() -> PathBuf {
+    PathBuf::from(claude_dir_name())
 }
 
 /// `os.homedir()`: HOME as it is set, even empty, else the user's entry in the password database.
@@ -104,4 +139,30 @@ pub fn home() -> PathBuf {
         .map(PathBuf::from)
         .or_else(env::home_dir)
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+
+    #[test]
+    fn prune_drops_only_files_idle_past_the_max_age() {
+        let dir = env::temp_dir().join(format!("ponytail-prune-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("temp dir");
+        let (old, recent) = (dir.join("old"), dir.join("recent"));
+        fs::write(&old, "ultra").expect("old file");
+        fs::write(&recent, "lite").expect("recent file");
+        let forty_days_ago = SystemTime::now() - Duration::from_secs(40 * 24 * 3600);
+        File::options()
+            .write(true)
+            .open(&old)
+            .and_then(|f| f.set_modified(forty_days_ago))
+            .expect("old mtime");
+        prune_stale(&dir);
+        let left = (old.exists(), recent.exists());
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(left, (false, true), "old and recent file kept");
+        prune_stale(&dir.join("missing"));
+    }
 }
