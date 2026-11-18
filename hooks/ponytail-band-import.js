@@ -179,7 +179,7 @@ function sessionStats(records, subagentRecords = [], sessionId = '') {
 // Same stamp and quoting as the band (hooks/band/metrics.ts), so the board reads both alike.
 const two = n => String(n).padStart(2, '0');
 const stamp = t => { const d = new Date(t); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`; };
-const field = v => { let s = v === null || v === undefined ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+const field = v => { let s = v === null || v === undefined ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 
 function csvRow(sessionId, project, s) {
   return [`${sessionId.slice(0, 8)}-${s.startedMs}`, stamp(s.startedMs), project, s.name, s.cost === null ? '' : s.cost.toFixed(2), s.turns,
@@ -205,7 +205,7 @@ function projectOf(cwd, cache) {
       const git = spawnSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' });
       if (git.status === 0 && /[\\/]\.git$/.test(git.stdout.trim())) root = path.dirname(git.stdout.trim());
     }
-    cache.set(cwd, path.basename(root.replace(/[\\/]+$/, '')));
+    cache.set(cwd, { project: path.basename(root.replace(/[\\/]+$/, '')), root });
   }
   return cache.get(cwd);
 }
@@ -214,29 +214,33 @@ function ledgerDir() {
   return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'ponytail', 'band');
 }
 
-// Node loads hooks/band/board.ts, the same page the band builds. Its './logo' import has no
-// extension, which Node ESM will not resolve.
-let boardModule;
-function loadBoard() {
-  if (boardModule) return boardModule;
-  const { registerHooks } = require('node:module');
-  registerHooks({
-    resolve(specifier, context, nextResolve) {
-      if ((specifier.startsWith('./') || specifier.startsWith('../')) && path.extname(specifier) === '')
-        return nextResolve(`${specifier}.ts`, context);
-      return nextResolve(specifier, context);
-    },
-  });
+// Node loads the band's own TypeScript (hooks/band/<name>.ts). Its imports have no extension,
+// which Node ESM will not resolve.
+const bandModules = new Map();
+function loadBand(name) {
+  if (bandModules.has(name)) return bandModules.get(name);
+  if (bandModules.size === 0) {
+    const { registerHooks } = require('node:module');
+    registerHooks({
+      resolve(specifier, context, nextResolve) {
+        if ((specifier.startsWith('./') || specifier.startsWith('../')) && path.extname(specifier) === '')
+          return nextResolve(`${specifier}.ts`, context);
+        return nextResolve(specifier, context);
+      },
+    });
+  }
   const emit = process.emitWarning;
   process.emitWarning = (warning, type, code) => {
     if ((code || (type && type.code)) === 'MODULE_TYPELESS_PACKAGE_JSON') return;
     return emit.call(process, warning, type, code);
   };
-  // shortcut: Node 22 type stripping loads board.ts; on older Node this throws, the CSV is already saved.
-  boardModule = import(pathToFileURL(path.join(__dirname, 'band', 'board.ts')).href)
+  // shortcut: needs Node's type stripping (22.18+); older Node fails the whole import, upgrade Node if that bites.
+  const loaded = import(pathToFileURL(path.join(__dirname, 'band', `${name}.ts`)).href)
     .finally(() => { process.emitWarning = emit; });
-  return boardModule;
+  bandModules.set(name, loaded);
+  return loaded;
 }
+const loadBoard = () => loadBand('board');
 
 // Same rebuild as writeBoard in hooks/band/register.tsx: every project's ledger, not only new rows.
 async function writeBoard(dir) {
@@ -249,7 +253,8 @@ async function writeBoard(dir) {
 
 async function run() {
   const root = path.join(getClaudeDir(), 'projects');
-  const byProject = new Map();
+  const { ledgerFile } = await loadBand('metrics');
+  const byFile = new Map();
   const roots = new Map();
   let dirs = [];
   try { dirs = fs.readdirSync(root); } catch (e) { return { sessions: 0, added: 0 }; }
@@ -277,9 +282,10 @@ async function run() {
       const stats = sessionStats(records, subRecords, id);
       if (!stats || !Number.isFinite(stats.startedMs)) continue;
       sessions++;
-      const project = projectOf(cwd, roots);
-      if (!byProject.has(project)) byProject.set(project, []);
-      byProject.get(project).push(csvRow(id, project, stats));
+      const { project, root: repo } = projectOf(cwd, roots);
+      const ledger = ledgerFile(ledgerDir(), project, repo);
+      if (!byFile.has(ledger)) byFile.set(ledger, []);
+      byFile.get(ledger).push(csvRow(id, project, stats));
     }
   }
   const dir = ledgerDir();
@@ -289,8 +295,7 @@ async function run() {
     try { fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach(l => l && !l.startsWith('key,') && have.add(sessionOf(l))); } catch (e) {}
   }
   let added = 0;
-  for (const [project, rows] of byProject) {
-    const file = path.join(dir, `${project.replace(/[^\w.-]/g, '_')}.csv`);
+  for (const [file, rows] of byFile) {
     let existing = '';
     try { existing = fs.readFileSync(file, 'utf8'); } catch (e) {}
     const merged = mergeRows(existing, rows, have);

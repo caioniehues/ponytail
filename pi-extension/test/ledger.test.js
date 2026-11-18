@@ -4,11 +4,12 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 
-import { ledgerDir, ledgerFile, opener, registerBoard, sessionName, snapshotFrom, testsFrom } from "../ledger.js";
+import { ledgerDir, opener, registerBoard, sessionName, snapshotFrom, testsFrom } from "../ledger.js";
 
 // Stand-ins for the band's TypeScript, which plain Node cannot import.
 const band = {
   taskKey: (session, startedAt) => `${session.slice(0, 8)}-${startedAt}`,
+  ledgerFile: (dir, project) => join(dir, `${project}.csv`),
   stamp: (ms) => `stamp:${ms}`,
   isTestCommand: (command) => /\bnpm test\b/.test(command),
   testCounts: (output) => ({
@@ -155,10 +156,6 @@ describe("ledger paths", () => {
     }
   });
 
-  test("should map characters outside [\\w.-] to _ when naming the CSV", () => {
-    assert.equal(ledgerFile("/d", "my repo/ü.x-1"), join("/d", "my_repo__.x-1.csv"), "unsafe characters should become _");
-  });
-
   test("should pick the platform's open command for each platform", () => {
     assert.deepEqual(opener("win32", "f"), ["cmd", ["/c", "start", "", "f"]], "Windows should use start");
     assert.deepEqual(opener("darwin", "f"), ["open", ["f"]], "macOS should use open");
@@ -209,7 +206,7 @@ async function withLedger(fn) {
 
 describe("registerBoard agent_end", () => {
   test("should upsert into the existing CSV and rebuild board.html when run twice", () => withLedger(async (dir) => {
-    const h = harness({ exec: (cmd) => (cmd === "git" ? { code: 0, stdout: "/repos/my-repo\n" } : { code: 1 }) });
+    const h = harness({ exec: (cmd) => (cmd === "git" ? { code: 0, stdout: "/repos/my-repo/.git\n/repos/my-repo\n" } : { code: 1 }) });
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "my-repo.csv"), "key,agent_minutes\nforeign,1.0\n");
     await h.start();
@@ -219,6 +216,15 @@ describe("registerBoard agent_end", () => {
 
     assert.equal(readFileSync(join(dir, "my-repo.csv"), "utf8"), `key,agent_minutes\nforeign,1.0\n${KEY},0.0\n`, "foreign row should stay and own row appear once");
     assert.equal(readFileSync(join(dir, "board.html"), "utf8"), `<board>foreign,1.0|${KEY},0.0</board>`, "board should be rebuilt from the CSV");
+  }));
+
+  test("should name the CSV after the main repo when the session is in a worktree", () => withLedger(async (dir) => {
+    const h = harness({ exec: (cmd) => (cmd === "git" ? { code: 0, stdout: "/repos/my-repo/.git\n/repos/my-repo-wt\n" } : { code: 1 }) });
+    await h.start();
+
+    await h.run();
+
+    assert.ok(readFileSync(join(dir, "my-repo.csv"), "utf8").includes(KEY), "a worktree's row should be in its repo's file");
   }));
 
   test("should name the CSV after the cwd when git has no repo", () => withLedger(async (dir) => {

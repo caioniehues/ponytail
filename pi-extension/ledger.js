@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { readDefaultMode, resolveSessionMode } from "./index.js";
 
@@ -74,8 +74,6 @@ export function snapshotFrom({ entries, header, sessionId, project, named, agent
 // Same place as the band's ledger, so pi and Claude Code share one board.
 export const ledgerDir = () => join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "ponytail", "band");
 
-export const ledgerFile = (dir, project) => join(dir, `${project.replace(/[^\w.-]/g, "_")}.csv`);
-
 export const opener = (platform, file) =>
   platform === "win32" ? ["cmd", ["/c", "start", "", file]] : [platform === "darwin" ? "open" : "xdg-open", [file]];
 
@@ -93,6 +91,7 @@ function writeBoard(band) {
 
 export function registerBoard(pi, band) {
   let project = "";
+  let root = "";
   let agentMs = 0;
   let runStart = 0;
   let warned = false;
@@ -105,14 +104,17 @@ export function registerBoard(pi, band) {
     ctx?.ui?.notify?.(`ponytail board: could not write the ledger (${error?.message ?? error})`, "warning");
   };
 
+  // A worktree counts for its main repo, as in the band: the folder above the common .git dir.
   async function projectOf(ctx) {
-    const git = await pi.exec?.("git", ["rev-parse", "--show-toplevel"], { cwd: ctx?.cwd }).catch(() => undefined);
-    return basename(git?.code === 0 && git.stdout.trim() ? git.stdout.trim() : ctx?.cwd ?? process.cwd());
+    const git = await pi.exec?.("git", ["rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel"], { cwd: ctx?.cwd }).catch(() => undefined);
+    const [common = "", top = ""] = git?.code === 0 ? git.stdout.trim().split("\n") : [];
+    const repo = /[\\/]\.git$/.test(common) ? dirname(common) : top || (ctx?.cwd ?? process.cwd());
+    return { project: basename(repo), root: repo };
   }
 
   // A reload or resume picks the agent time up from the session's own row, as the band's resume does.
   function readAgentMs(ctx) {
-    const file = ledgerFile(ledgerDir(), project);
+    const file = band.ledgerFile(ledgerDir(), project, root);
     if (!existsSync(file)) return 0;
     const [head, ...rows] = band.parseCsv(readFileSync(file, "utf8"));
     const key = keyOf(ctx);
@@ -125,7 +127,7 @@ export function registerBoard(pi, band) {
     agentMs = 0;
     runStart = 0;
     try {
-      project = await projectOf(ctx);
+      ({ project, root } = await projectOf(ctx));
       agentMs = readAgentMs(ctx);
     } catch (e) {
       warn(ctx, e);
@@ -140,7 +142,7 @@ export function registerBoard(pi, band) {
     if (runStart) agentMs += Date.now() - runStart;
     runStart = 0;
     try {
-      project ||= await projectOf(ctx);
+      if (!project) ({ project, root } = await projectOf(ctx));
       const sm = ctx?.sessionManager;
       const entries = sm?.getEntries?.() ?? [];
       const snapshot = snapshotFrom({
@@ -155,7 +157,7 @@ export function registerBoard(pi, band) {
       if (!snapshot) return;
       const dir = ledgerDir();
       mkdirSync(dir, { recursive: true, mode: 0o700 });
-      const file = ledgerFile(dir, project);
+      const file = band.ledgerFile(dir, project, root);
       write(file, band.upsertCsv(existsSync(file) ? readFileSync(file, "utf8") : "", snapshot));
       writeBoard(band);
     } catch (e) {

@@ -140,6 +140,32 @@ async function main() {
   console.log('band import checks passed');
 }
 
+// A name ending in a carriage return (a CRLF first prompt) stays one ledger row the board reads.
+async function carriageReturn() {
+  const { tasksFrom } = await loadBoard();
+  const tasks = tasksFrom(`${CSV_HEADER}\n${csvRow('abcd1234-0000', 'shop', { ...s, name: 'Fix cart\r' })}\n`);
+  assert.deepEqual(tasks.map(t => t.name), ['Fix cart\r'], 'the import quotes a carriage return as the band does');
+}
+
+// A project name that had to be rewritten goes to the band's hashed file (ledgerFile in hooks/band/metrics.ts).
+async function rewrittenName() {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-import-'));
+  const projects = path.join(temp, 'claude', 'projects', '-work-api-shop');
+  fs.mkdirSync(projects, { recursive: true });
+  fs.writeFileSync(path.join(projects, 'abcd1234-0000.jsonl'), records.map(r => JSON.stringify({ ...r, cwd: '/work/api@shop' })).join('\n') + '\n');
+  const env = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
+  process.env.CLAUDE_CONFIG_DIR = path.join(temp, 'claude');
+  process.env.XDG_CONFIG_HOME = path.join(temp, 'config');
+  try {
+    await run();
+    const files = fs.readdirSync(path.join(temp, 'config', 'ponytail', 'band')).filter(f => f.endsWith('.csv'));
+    assert.deepEqual(files, ['api_shop_ad0ec4e8.csv'], 'api@shop gets the file the band writes, not api_shop.csv');
+  } finally {
+    for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+}
+
 // The board's month periods span whole calendar days (dietrichgebert/ponytail#1382). Here and not in band.test.tsx:
 // the engine's test sandbox refuses to evaluate the page's script, so node runs its monthKeys.
 async function monthPeriods() {
@@ -152,7 +178,7 @@ async function monthPeriods() {
 }
 
 // The band's own writer locks a ledger directory it makes: tests/band.test.tsx.
-main().then(monthPeriods).catch(err => {
+main().then(monthPeriods).then(carriageReturn).then(rewrittenName).catch(err => {
   console.error(err);
   process.exit(1);
 });
