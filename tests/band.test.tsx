@@ -909,6 +909,48 @@ test('the transcript alone says which tests ran, what an edit made and what it r
   expect(toolsSummary(scratch, '/repo', known)).toEqual({ created: [], removed: [], reused: [], tests: { state: 'none' } })
 })
 
+// A Write's transcript row keeps the file it replaced (toolUseResult.originalFile), null for a new file.
+const writeRows = (id: string, file: string, content: string, originalFile: string | null) => [
+  JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Write', input: { file_path: file, content } }] } }),
+  JSON.stringify({
+    type: 'user',
+    message: { role: 'user', content: [{ tool_use_id: id, type: 'tool_result', content: `The file ${file} has been updated successfully.`, is_error: false }] },
+    toolUseResult: { type: originalFile === null ? 'create' : 'update', filePath: file, content, originalFile, structuredPatch: [] },
+  }),
+]
+
+test('a Write over an existing file creates only the definitions it adds and removes the ones it drops', () => {
+  const OLD = 'export function a() {\n  return 1\n}\nexport function b() {\n  return 2\n}\n'
+  const NEW = 'export function b() {\n  return 2\n}\nexport function c() {\n  return 3\n}\n'
+  const { created, removed } = toolsSummary(toolCalls(writeRows('w1', '/repo/src/m.ts', NEW, OLD).join('\n')), '/repo', new Map())
+  expect({ created, removed }).toEqual({ created: ['c'], removed: ['a'] })
+  // A new file has no originalFile: all it defines is new.
+  expect(toolsSummary(toolCalls(writeRows('w2', '/repo/src/n.ts', NEW, null).join('\n')), '/repo', new Map()).created).toEqual(['b', 'c'])
+})
+
+test("a worktree subagent's edit inside the project counts toward the task", () => {
+  const edit = { name: 'Edit', input: { file_path: '/repo/.claude/worktrees/agent-1/src/m.ts', old_string: '', new_string: 'export function send() {\n  return 1\n}' }, failed: false, text: 'ok' }
+  expect(toolsSummary([edit], '/repo', new Map()).created).toEqual(['send'])
+})
+
+test("a subagent's calls fold in with the main transcript's in the order they ran", () => {
+  const at = (ts: string, row: object) => JSON.stringify({ ...row, timestamp: ts })
+  const use = (id: string, name: string, input: object) => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] } })
+  const result = (id: string, content: string, is_error = false) => ({ type: 'user', message: { role: 'user', content: [{ tool_use_id: id, type: 'tool_result', content, is_error }] } })
+  const main = [
+    at('2026-11-18T10:00:00.000Z', use('m1', 'Bash', { command: 'npm test' })),
+    at('2026-11-18T10:00:01.000Z', result('m1', 'ℹ pass 14\nℹ fail 0')),
+    at('2026-11-18T10:00:30.000Z', use('m2', 'Edit', { file_path: '/repo/src/m.ts', old_string: 'a', new_string: 'b' })),
+    at('2026-11-18T10:00:31.000Z', result('m2', 'ok')),
+  ]
+  const sub = [
+    at('2026-11-18T10:00:20.000Z', use('s1', 'Bash', { command: 'npm test' })),
+    at('2026-11-18T10:00:21.000Z', result('s1', 'ℹ pass 13\nℹ fail 1', true)),
+  ]
+  // Main's file first, then the subagent's, as readTools reads them: the subagent's failing run came before main's edit.
+  expect(toolsSummary(toolCalls([...main, ...sub].join('\n')), '/repo', new Map()).tests).toEqual({ state: 'stale', passed: 13, failed: 1 })
+})
+
 test('a test run through the PowerShell tool counts like one through Bash (dietrichgebert/ponytail#1414)', () => {
   const ran = [{ name: 'PowerShell', input: { command: 'npm test' }, failed: false, text: 'ℹ pass 7' }]
   expect(toolsSummary(ran, '/repo', new Map()).tests).toEqual({ state: 'pass', passed: 7, failed: undefined })
@@ -978,6 +1020,45 @@ test('a turn reads the tests, reuse and stale tests out of its transcript', asyn
   // reuse_pct, reused, new, callers_open in the ledger: 1 of 3 functions reused.
   expect(rows.at(-1)).toContain(',33,1,2,1,')
   await ui.unmount()
+})
+
+test("a turn counts what its subagents did, read from their transcripts beside the session's", async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const transcript = '/home/u/.claude/projects/-repo/s1.jsonl'
+  const agent = '/home/u/.claude/projects/-repo/s1/subagents/agent-x.jsonl'
+  const SEND = 'export function send() {\n  return 1\n}'
+  const subLines = [
+    JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'a1', name: 'Edit', input: { file_path: '/repo/src/cart.ts', old_string: '', new_string: SEND } }] } }),
+    JSON.stringify({ type: 'user', message: { role: 'user', content: [{ tool_use_id: 'a1', type: 'tool_result', content: 'ok', is_error: false }] } }),
+  ].join('\n')
+  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('session.repo', () => ({ value: { root: '/repo' } }) as never)
+  on('session.root', () => ({ value: '-repo' }))
+  on('session.id', () => ({ value: 's1' }))
+  on('session.turns', () => ({ value: 1 }))
+  on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0.5 } } }) as never)
+  on('fs.exists', ($, e) => ({ value: e.path === transcript }))
+  on('fs.read', () => ({ value: '' }))
+  on('fs.list', ($, e) => ({ value: e.path.replaceAll('\\', '/').endsWith('/-repo/s1/subagents') ? [{ name: 'agent-x.jsonl', kind: 'file' }, { name: 'agent-x.meta.json', kind: 'file' }] : [] }) as never)
+  const rows: string[] = []
+  on('fs.write', ($, e) => {
+    if (e.path.endsWith('repo.csv')) rows.push(e.text)
+    return { value: undefined }
+  })
+  on('process.run', ($, e) => {
+    const argv = e.argv
+    if (argv.includes(TOOL_USE_RECORD)) return argv.at(-1)?.replaceAll('\\', '/') === agent ? ran(0, subLines) : ran(1)
+    return ran(1)
+  })
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+
+  const [header, row] = parseCsv(rows.at(-1) ?? '')
+  expect(row?.[header?.indexOf('new') ?? -1]).toBe('1')
 })
 
 // A turn whose Edit removes two definitions: `legacy` is still called, `stale` is defined again in another file.

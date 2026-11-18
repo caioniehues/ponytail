@@ -126,15 +126,22 @@ async function readModel($: EngineInterface, transcript: string): Promise<string
 }
 
 // What the session's tools did to the board: the tests they ran, the definitions they wrote, the known names they call.
-// From the transcript, because a mod that hooks tool.call stops Code Mode (experimental) from starting at all.
+// From the transcripts, the session's and each subagent's beside it (<session>/subagents/*.jsonl), not a tool.call
+// hook: see docs/adr/0001-band-reads-tool-calls-from-the-transcript.md.
 // shortcut: replays every tool call each turn, so a long session re-reads itself; a saved byte offset would lift that.
 async function readTools($: EngineInterface, transcript: string, known: Map<string, string>, root: string) {
   if (transcript === '') return undefined
-  const grep = await $.process.run(['grep', '-F', '-e', TOOL_USE_RECORD, '-e', TOOL_RESULT_RECORD, transcript]).catch(() => undefined)
-  // shortcut: without grep (Windows) only a transcript under 4 MiB is read, like readTitle; findstr would lift that.
-  const text = grep !== undefined && grep.exitCode <= 1 ? grep.stdout : await $.fs.read(transcript).catch(() => undefined)
+  const read = async (file: string) => {
+    const grep = await $.process.run(['grep', '-F', '-e', TOOL_USE_RECORD, '-e', TOOL_RESULT_RECORD, file]).catch(() => undefined)
+    // shortcut: without grep (Windows) only a transcript under 4 MiB is read, like readTitle; findstr would lift that.
+    return grep !== undefined && grep.exitCode <= 1 ? grep.stdout : await $.fs.read(file).catch(() => undefined)
+  }
+  const text = await read(transcript)
   if (text === undefined) return undefined
-  return toolsSummary(toolCalls(text), root, known)
+  const dir = `${transcript.replace(/\.jsonl$/, '')}/subagents`
+  const agents = (await $.fs.list(dir).catch(() => [])).filter(f => f.kind === 'file' && f.name.endsWith('.jsonl'))
+  const theirs = await Promise.all(agents.map(f => read(`${dir}/${f.name}`)))
+  return toolsSummary(toolCalls([text, ...theirs.filter(t => t !== undefined)].join('\n')), root, known)
 }
 
 // Where Claude Code keeps the session's transcript: on managed, Team and Enterprise machines its cc-plugin-sec-default skips every classic.* hook, so no hook hands the path over.
