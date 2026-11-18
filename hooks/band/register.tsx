@@ -125,11 +125,11 @@ async function readModel($: EngineInterface, transcript: string): Promise<string
   return mainModel(text)
 }
 
-// What the session's tools did to the board: the tests they ran, the definitions they wrote, the known names they call.
-// From the transcripts, the session's and each subagent's beside it (<session>/subagents/*.jsonl), not a tool.call
+// Every tool call the session made, which toolsSummary folds into the band: the tests they ran, the definitions they
+// wrote, the known names they call. From the transcripts, the session's and each subagent's beside it (<session>/subagents/*.jsonl), not a tool.call
 // hook: see docs/adr/0001-band-reads-tool-calls-from-the-transcript.md.
 // shortcut: replays every tool call each turn, so a long session re-reads itself; a saved byte offset would lift that.
-async function readTools($: EngineInterface, transcript: string, known: Map<string, string>, root: string) {
+async function readCalls($: EngineInterface, transcript: string) {
   if (transcript === '') return undefined
   const read = async (file: string) => {
     const grep = await $.process.run(['grep', '-F', '-e', TOOL_USE_RECORD, '-e', TOOL_RESULT_RECORD, file]).catch(() => undefined)
@@ -141,7 +141,7 @@ async function readTools($: EngineInterface, transcript: string, known: Map<stri
   const dir = `${transcript.replace(/\.jsonl$/, '')}/subagents`
   const agents = (await $.fs.list(dir).catch(() => [])).filter(f => f.kind === 'file' && f.name.endsWith('.jsonl'))
   const theirs = await Promise.all(agents.map(f => read(`${dir}/${f.name}`)))
-  return toolsSummary(toolCalls([text, ...theirs.filter(t => t !== undefined)].join('\n')), root, known)
+  return toolCalls([text, ...theirs.filter(t => t !== undefined)].join('\n'))
 }
 
 // Where Claude Code keeps the session's transcript: on managed, Team and Enterprise machines its cc-plugin-sec-default skips every classic.* hook, so no hook hands the path over.
@@ -221,9 +221,17 @@ async function openBoard($: EngineInterface) {
   await $.process.run(windows ? ['cmd', '/c', 'start', '', file] : [mac ? 'open' : 'xdg-open', file])
 }
 
-// Sets the band up for a session (level, project, task row, cost baseline); returns the definitions that exist now.
-async function start($: EngineInterface): Promise<Map<string, string>> {
+// The definitions that exist now: what new code can reuse.
+async function definitions($: EngineInterface): Promise<Map<string, string>> {
   const grep = await $.process.run(['git', 'grep', '-I', '--untracked', '-nE', GREP_DEFS, '--', ...DEF_PATHS]).catch(() => undefined)
+  return grep?.exitCode === 0 ? parseDefs(grep.stdout) : new Map()
+}
+
+// Sets the band up for a session (level, project, task row, cost baseline); returns the definitions that exist now,
+// or none while the band is hidden: the first turn it is shown searches for them.
+async function start($: EngineInterface): Promise<Map<string, string> | undefined> {
+  const hidden = await bandHidden($)
+  const known = hidden ? undefined : await definitions($)
   const level = await readLevel($)
   const details = (await $.store.get('details')) === true
   const repo = await $.session.repo().catch(() => null)
@@ -236,12 +244,12 @@ async function start($: EngineInterface): Promise<Map<string, string>> {
   const key = usage ? taskKey(session, usage.startedAt) : ''
   // Another session (/resume, /branch) starts its own counters; its row brings back what it had.
   await update($, band, b => resume({ ...EMPTY, ...(b.session === session ? b : { ...b, ...TASK }), level, details, project, session, cost: usage?.cost?.usd ?? b.cost }, csv, key))
-  return grep?.exitCode === 0 ? parseDefs(grep.stdout) : new Map()
+  return known
 }
 
 export const register: Register = (on, options) => {
-  // Definitions that existed when the session started: what new code can reuse.
-  let known = new Map<string, string>()
+  // Definitions that existed when the session started: what new code can reuse. Unset while the band was hidden.
+  let known: Map<string, string> | undefined
 
   on('session.start', async ($, e, next) => {
     known = await start($)
@@ -288,6 +296,30 @@ export const register: Register = (on, options) => {
     const usage = await $.session.usage()
     const turns = await $.session.turns()
     const level = await readLevel($)
+    // What every turn adds, shown or hidden: tokens and agent time are summed per turn, so a turn left out is lost.
+    const totals = (b: Band) => {
+      const cost = usage.cost?.usd ?? b.cost
+      // A cost below the baseline means the engine started its ledger over.
+      const turn = cost >= b.cost ? cost - b.cost : cost
+      return {
+        level,
+        cost,
+        // Each turn adds its own cost. Not the engine's total: it goes on across /clear and starts over in a new process.
+        spent: b.spent + turn,
+        turns,
+        turnCosts: [...b.turnCosts, turn].slice(-20),
+        tokens: used ? addTokens(b.tokens, used) : b.tokens,
+        busyMs: b.busyMs + e.durationMs,
+      }
+    }
+    // Hidden, the band keeps only its totals: no transcript reads, no searches, no ledger row.
+    if (await bandHidden($)) {
+      await update($, band, x => {
+        const b = { ...EMPTY, ...x }
+        return { ...b, ...totals(b) }
+      })
+      return next(e)
+    }
     const { removed: stored, transcript: saved } = await load($)
     const session = await $.session.id()
     // Here, not at start: the first turn writes the file, and a new id (/clear, /resume) or a move (/cd, a worktree) changes it.
@@ -295,7 +327,16 @@ export const register: Register = (on, options) => {
     const transcript = kept ? saved : await findTranscript($, session)
     const title = await readTitle($, transcript)
     const model = await readModel($, transcript)
-    const tools = await readTools($, transcript, known, (await $.session.repo().catch(() => null))?.root ?? (await $.session.cwd()))
+    const calls = await readCalls($, transcript)
+    const root = (await $.session.repo().catch(() => null))?.root ?? (await $.session.cwd())
+    if (known === undefined) {
+      // The start-up search a hidden band skipped runs at its first shown turn. What the task wrote while hidden is in
+      // the tree by now: it is the task's own, so new code calling it is not reuse.
+      // shortcut: the tree as it is when shown, so code changed outside tool calls while hidden (a pull, a checkout) counts as there before, and a name the task created hides an older one of that name elsewhere; key known by file too if that bites.
+      const created = calls === undefined ? [] : toolsSummary(calls, root, new Map()).created
+      known = new Map([...(await definitions($))].filter(([name]) => !created.includes(name)))
+    }
+    const tools = calls === undefined ? undefined : toolsSummary(calls, root, known)
     const removed = tools?.removed ?? stored
 
     // A removed or renamed definition that is not defined again but still called somewhere.
@@ -319,21 +360,11 @@ export const register: Register = (on, options) => {
 
     const b = await update($, band, x => {
       const b = { ...EMPTY, ...x }
-      const cost = usage.cost?.usd ?? b.cost
-      // A cost below the baseline means the engine started its ledger over.
-      const turn = cost >= b.cost ? cost - b.cost : cost
       return {
         ...b,
         ...tools,
-        level,
+        ...totals(b),
         transcript,
-        cost,
-        // Each turn adds its own cost. Not the engine's total: it goes on across /clear and starts over in a new process.
-        spent: b.spent + turn,
-        turns,
-        turnCosts: [...b.turnCosts, turn].slice(-20),
-        tokens: used ? addTokens(b.tokens, used) : b.tokens,
-        busyMs: b.busyMs + e.durationMs,
         name: title ?? b.name,
         model: model || b.model,
         removed: stillRemoved,

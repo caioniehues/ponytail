@@ -599,6 +599,99 @@ test('after /ponytail band the band draws nothing', async ($, on) => {
   await ui.unmount()
 })
 
+// What a hidden band's test sees: the flag set, a transcript per session, and every search and write it makes.
+function hiddenBand(on: On, state: { hidden: boolean; usd: number; calls?: string; defs?: string }) {
+  let session = 's1'
+  const transcript = () => `/home/u/.claude/projects/-repo/${session}.jsonl`
+  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('fs.read', ($, e) => (e.path.replaceAll('\\', '/').endsWith('/home/u/.claude/.ponytail-band') && state.hidden ? { value: 'off' } : { deny: 'missing' }) as never)
+  on('session.repo', () => ({ value: { root: '/repo' } }) as never)
+  on('session.root', () => ({ value: '-repo' }))
+  on('session.id', () => ({ value: session }))
+  on('session.turns', () => ({ value: 1 }))
+  on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: state.usd } } }) as never)
+  on('fs.exists', ($, e) => ({ value: e.path === transcript() }))
+  on('fs.list', () => ({ value: [] }))
+  const writes: { path: string; text: string }[] = []
+  on('fs.write', ($, e) => {
+    writes.push({ path: e.path.replace(/\\/g, '/'), text: e.text })
+    return { value: undefined }
+  })
+  // The fixture's tool calls: an Edit that removes `legacy`, so a shown turn searches for its callers.
+  const toolLines = BAND_SESSION.split('\n').filter(line => line.includes(TOOL_USE_RECORD) || line.includes(TOOL_RESULT_RECORD)).join('\n')
+  const searches: string[][] = []
+  on('process.run', ($, e) => {
+    if (e.argv[0] === 'git' || e.argv[0] === 'grep') searches.push([...e.argv])
+    if (e.argv.includes(TOOL_USE_RECORD)) return ran(0, state.calls ?? toolLines) as never
+    return (e.argv.includes('-nE') && state.defs !== undefined ? ran(0, state.defs) : ran(1)) as never
+  })
+  on('command.run', () => {
+    session = 's2'
+    return { text: '' }
+  })
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('turn.complete', () => ({ text: '' }))
+  return { searches, writes }
+}
+
+// A field of the last ledger row a turn wrote.
+function ledgerField(writes: { path: string; text: string }[]) {
+  const [header, row] = parseCsv(writes.filter(w => w.path.endsWith('/repo.csv')).at(-1)?.text ?? '')
+  return (name: string) => row?.[header?.indexOf(name) ?? -1]
+}
+
+test('a hidden band searches nothing at start-up, after /clear or after a turn, and writes no ledger or board', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const { searches, writes } = hiddenBand(on, { hidden: true, usd: 0.5 })
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  await $.command.run(typed('clear'))
+  await $.turn.complete({ answer: '', durationMs: 1000, usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } as never)
+  expect(searches).toEqual([])
+  expect(writes).toEqual([])
+})
+
+test('turns taken while hidden still count: the first shown turn books their tokens, agent time and cost', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const state = { hidden: true, usd: 0 }
+  const { writes } = hiddenBand(on, state)
+  const usage = { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0 }
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  state.usd = 0.2
+  await $.turn.complete({ answer: '', durationMs: 60_000, usage } as never)
+  state.usd = 0.5
+  await $.turn.complete({ answer: '', durationMs: 120_000, usage } as never)
+  state.hidden = false
+  state.usd = 0.6
+  await $.turn.complete({ answer: '', durationMs: 180_000, usage } as never)
+  const field = ledgerField(writes)
+  expect([field('cost_usd'), field('agent_minutes'), field('tokens_total'), field('tokens_output')]).toEqual(['0.60', '6.0', '3330', '30'])
+})
+
+test('a definition the task wrote while the band was hidden is new, not reused, once the band is shown', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const edit = (id: string, file: string, code: string) => [
+    JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Edit', input: { file_path: file, old_string: '', new_string: code } }] } }),
+    JSON.stringify({ type: 'user', message: { role: 'user', content: [{ tool_use_id: id, type: 'tool_result', content: 'ok', is_error: false }] } }),
+  ]
+  const writeHelper = edit('t1', '/repo/src/util.ts', 'export function helper() {\n  return 1\n}')
+  const callHelper = edit('t2', '/repo/src/app.ts', 'export function run() {\n  return helper() + lineTotal([1])\n}')
+  // By the first shown turn the tree holds the hidden turn's helper beside the older lineTotal.
+  const defs = 'src/util.ts:1:export function helper() {\nsrc/money.ts:1:export function lineTotal(items: number[]) {\nsrc/app.ts:1:export function run() {\n'
+  const state = { hidden: true, usd: 0.1, calls: writeHelper.join('\n'), defs }
+  const { writes } = hiddenBand(on, state)
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+  state.hidden = false
+  state.calls = [...writeHelper, ...callHelper].join('\n')
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+  const field = ledgerField(writes)
+  // lineTotal was there before the task: reused. helper and run are the task's own.
+  expect([field('reused'), field('new')]).toEqual(['1', '2'])
+})
+
 for (const command of ['clear', 'resume', 'branch']) {
   test(`after /${command} the band shows the level again, with no session.start`, async ($, on) => {
     mock.clock(on)
