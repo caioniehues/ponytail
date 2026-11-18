@@ -6,6 +6,7 @@ Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) o
 
 - `main` is pushed and CI green. It is upstream `96608e0` (v5.3.3) plus picked upstream PRs and fork fixes: `git log --oneline 96608e0..main` is the history, each pick citing `dietrichgebert/ponytail#<n>`.
 - All upstream batches in the plan are integrated: band fixes, privacy, Windows, per-session levels, test-run counting, uninstall and config, codebase map, hosts, ledger, rules and skills, and (2026-11-18) band features and Pi: #1378 #1385 #1364 #1372 #1382 #1349 #1357 #1426 #1427 #1425, and the hand ports of #1404 (fork #4: the start-up definitions grep no longer holds `session.start`) and #1338 (fork #5: a level pick in the band applies with the next prompt).
+- Per-session levels checked live on 2026-11-18 (fork #6): on Claude Code 2.1.327, concurrent sessions, `/compact` and `--resume` keep each session's level, and `--fork-session` leaks (#15). On pi, sessions keep their own level across resume.
 - `npm run check` is green locally: rule copies, versions, `check:plugin`, `npm test`, band suite on Claude Code 2.1.327. `engine-latest.yml` runs the band checks on the newest Claude Code each Monday.
 
 ## Decisions git does not record
@@ -29,8 +30,9 @@ Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) o
 
 ## Open work, in priority order
 
-1. **Unverified, needs live hosts** (fork issue #6, `ready-for-human`): do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
-2. **Benchmark task** for owner-anchored fixes: fork issue #1. Validating it needs paid `claude -p` runs: ask first.
+1. **Level leak on `--fork-session`** (fork issue #15, `needs-triage`): a forked Claude Code session gets no level file of its own and follows the repo's last switch. Found in the live check below; reproduction in the issue.
+2. **Unverified hosts** (fork issue #16): OpenCode V1 (does `experimental.chat.system.transform` get a `sessionID`? If not, V1 falls back to the shared file) and Codex. The owner can't test these, so they stay unverified.
+3. **Benchmark task** for owner-anchored fixes: fork issue #1. Validating it needs paid `claude -p` runs: ask first.
 
 ## Suggested skills
 
