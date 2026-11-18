@@ -17,8 +17,12 @@ How hard ponytail pushes for the simplest solution: off, lite, full or ultra. On
 _Avoid_: mode, intensity
 
 **Task**:
-One Claude Code session, as the ledger records it.
+One agent session, Claude Code or Pi, as the ledger records it.
 _Avoid_: session (when meaning the ledger's row), job
+
+**Project**:
+A repository, named after its main working tree's folder. A worktree's tasks belong to its repository.
+_Avoid_: folder, workspace
 
 **Ledger**:
 The record of tasks for one project, one row per task.
