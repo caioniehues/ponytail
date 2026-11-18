@@ -28,6 +28,30 @@ const SKIP = [
 function parses(text) {
   try { JSON.parse(text); return true; } catch (e) { return false; }
 }
+// rust-anything numbers the traps in order, so one case added or dropped renamed every trap after it: each is named by
+// a hash of its inputs instead (its toml, stdin and starting files), so a re-record changes only the cases that changed.
+function nameTraps(dir) {
+  const names = new Set(fs.readdirSync(dir).filter((f) => /^trap-\d+-/.test(f)).map((f) => f.replace(/\.[^.]+$/, '')));
+  const files = (base) => fs.existsSync(base)
+    ? fs.readdirSync(base, { recursive: true }).sort().map((f) => path.join(base, f))
+      .filter((f) => fs.statSync(f).isFile()).map((f) => path.relative(base, f) + '\0' + fs.readFileSync(f, 'latin1'))
+    : [];
+  const taken = new Set();
+  for (const name of names) {
+    const at = (ext) => path.join(dir, name + ext);
+    const toml = fs.readFileSync(at('.toml'), 'utf8');
+    const stdin = fs.existsSync(at('.stdin')) ? fs.readFileSync(at('.stdin'), 'latin1') : '';
+    const inputs = [toml.split(name).join(''), stdin, ...files(at('.in'))].join('\0');
+    const next = 'trap-' + name.replace(/^trap-\d+-/, '') + '-' + crypto.createHash('sha256').update(inputs).digest('hex').slice(0, 6);
+    const own = fs.readdirSync(dir).filter((f) => f.startsWith(name + '.'));
+    // The same inputs twice are one case.
+    if (taken.has(next)) { for (const f of own) fs.rmSync(path.join(dir, f), { recursive: true }); continue; }
+    taken.add(next);
+    for (const f of own) fs.renameSync(path.join(dir, f), path.join(dir, next + f.slice(name.length)));
+    fs.writeFileSync(path.join(dir, next + '.toml'), toml.split(name).join(next));
+  }
+}
+
 const SUITES = [
   [repo, ['tests/hooks.test.js', 'tests/activation-resume.test.js', 'tests/hooks-windows.test.js', 'tests/map.test.js']],
   [path.join(repo, 'pi-extension'), ['test/extension.test.js']],
@@ -79,6 +103,7 @@ try {
   fs.rmSync(path.join(repo, 'rust', 'app-cases'), { recursive: true, force: true });
   const record = spawnSync('rust-anything', ['app', 'record', repo, '--inputs', inputs, '--normalize', 'key-order', '--name', 'ponytail',
     '--', 'sh', 'rust/run-case.sh', 'node', 'rust/reference.js'], { stdio: 'inherit' });
+  if (record.status === 0) nameTraps(path.join(repo, 'rust', 'app-cases'));
   process.exitCode = record.status ?? 1;
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

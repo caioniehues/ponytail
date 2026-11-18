@@ -35,6 +35,9 @@ jobs:
       - name: Check version consistency
         run: node scripts/check-versions.js
 
+      - name: Check the docs' Markdown lists
+        run: node scripts/check-docs.js
+
       - name: Validate the plugin and type-check the band
         run: npm run check:plugin
 

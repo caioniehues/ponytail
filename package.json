@@ -39,7 +39,7 @@
     "test:band": "claude plugin test",
     "check:plugin": "node scripts/check-plugin.js",
     "check:rust": "sh scripts/check-rust.sh",
-    "check": "node scripts/check-rule-copies.js && node scripts/check-versions.js && npm run check:plugin && npm test && npm run test:band"
+    "check": "node scripts/check-rule-copies.js && node scripts/check-versions.js && node scripts/check-docs.js && npm run check:plugin && npm test && npm run test:band"
   },
   "pi": {
     "extensions": ["./pi-extension/index.js", "./pi-extension/board.js"],

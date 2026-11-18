@@ -31,6 +31,7 @@ scan() {
   warn_ported "$n" "$from"
 }
 
+PORTED_HIT=0
 warn_ported() {
   local n="$1" changed entry file hit
   changed=$(git diff --name-only "$2" "pr-$n")
@@ -40,9 +41,32 @@ warn_ported() {
       if grep -qxF "$file" <<<"$changed"; then hit+=("$file"); fi
     done
     if (( ${#hit[@]} )); then
-      echo "Warning: #$n changes ${hit[*]}, which the Rust port of \`${entry%%:*}\` reaches. Re-record the cases (node rust/cases/record.js) and run npm run check:rust: the binary keeps the old behaviour until its Rust is updated." >&2
+      PORTED_HIT=1
+      echo "Warning: #$n changes ${hit[*]}, which the Rust port of \`${entry%%:*}\` reaches: after a green check the cases are re-recorded and the binary replayed against them." >&2
     fi
   done
+}
+
+# Re-records the cases from the picked JS and replays the binary, so a pick that changes a ported hook shows how far the
+# Rust is behind. Reported, not blocking (ADR 0002): a red replay leaves the re-recorded cases uncommitted for the Rust to catch up.
+check_rust() {
+  local n="$1" log
+  if ! command -v cargo >/dev/null || ! command -v rust-anything >/dev/null; then
+    echo "Not checked: cargo or rust-anything is missing, so whether the binary still matches the JS after #$n is unknown." >&2
+    return 0
+  fi
+  log=$(mktemp)
+  if node rust/cases/record.js >"$log" 2>&1 && npm run check:rust >>"$log" 2>&1; then
+    echo "check:rust after #$n: $(grep -E 'cases passed' "$log" || echo green)"
+  else
+    echo "check:rust after #$n is red, so the binary lags the JS:" >&2
+    grep -E 'cases passed|^- |failed' "$log" | head -20 >&2 || tail -20 "$log" >&2
+    echo "Report: rust/app-cases/replay-report.md." >&2
+  fi
+  rm -f "$log"
+  if [[ -n "$(git status --porcelain rust/app-cases)" ]]; then
+    echo "The re-recorded cases changed (git status rust/app-cases): commit them with the Rust that matches them." >&2
+  fi
 }
 
 cite_and_check() {
@@ -69,6 +93,7 @@ cite_and_check() {
     exit "$status"
   fi
   rm -f "$log"
+  if (( PORTED_HIT )); then check_rust "$n"; fi
   git branch -q -D "pr-$n" 2>/dev/null || true
 }
 

@@ -12,3 +12,4 @@ The three hooks Claude Code runs (`session-start`, `subagent-start`, `prompt-sub
 - `hooks/claude-codex-hooks.json` runs the binary when it is built and no other host's marker is set, and node otherwise: Codex and VS Code Copilot read the same file and keep the JS, so the binary only needs Claude Code's output. Pi's map loader makes the same choice. `cargo clean` goes back to JS.
 - Drift is reported, not blocking: `npm run check:rust` replays the cases outside `npm run check`, and `scripts/pick-upstream.sh` warns when a pick touches a ported hook. CI does not build the Rust: the check runs locally. Until the Rust catches up, the binary runs the older behaviour.
 - A change to hook behaviour goes into JS first, then Rust.
+- Error text that V8 or node writes (a JSON.parse message, an fs error) is not part of the contract: a case that prints it goes in `SKIP` in `rust/cases/record.js` (decided for `/ponytail default` over a broken config.json, 2026-11-18).
