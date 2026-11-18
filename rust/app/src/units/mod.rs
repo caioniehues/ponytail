@@ -1,5 +1,6 @@
 //! The subcommands the Rust answers; every other one runs the reference (crate::original).
 
+mod map;
 mod subagent_start;
 
 use std::ffi::OsString;
@@ -15,6 +16,7 @@ pub fn dispatch(command: &str, matches: &ArgMatches) -> Option<ExitCode> {
         .and_then(|mut args| args.next());
     match (command, first.and_then(|arg| arg.to_str())) {
         ("hook", Some("subagent-start")) => Some(subagent_start::run()),
+        ("map", _) => Some(map::run(first.map(OsString::as_os_str))),
         _ => None,
     }
 }

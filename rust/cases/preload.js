@@ -129,6 +129,16 @@ if (OUT && !process.env.PONYTAIL_HARVEST_CHILD) {
       if (until === undefined) captureMap(root, process.env);
       return buildMap.apply(this, arguments);
     };
+    // Cases come from the JS even when the binary is built: Pi's loader starts the reference in its place.
+    const cp = require('child_process');
+    const execFile = cp.execFile;
+    const binary = path.join(repo, 'rust', 'app', 'target', 'release', 'ponytail');
+    cp.execFile = function (file, args, ...rest) {
+      if (file !== binary) return execFile.apply(this, arguments);
+      return execFile.call(this, process.execPath, [path.join(repo, 'rust', 'reference.js'), ...args], ...rest);
+    };
+    // Pi's extension imports execFile as an ES module binding.
+    require('module').syncBuiltinESMExports();
   } else if (path.dirname(script) === path.join(repo, 'hooks') || script === path.join(repo, 'rust', 'reference.js')) {
     // The map and the band import a hook starts are part of that hook's case.
     process.env.PONYTAIL_HARVEST_CHILD = '1';
@@ -136,8 +146,7 @@ if (OUT && !process.env.PONYTAIL_HARVEST_CHILD) {
     const name = path.basename(script);
     if (HOOKS[name]) captureHook(HOOKS[name]);
     else if (name === 'ponytail-map.js') captureMap(a || process.cwd(), process.env);
-    // Pi's map runs here when the binary is built; the hooks it runs are the hooks file's, which the direct runs cover,
-    // so a built binary records the same cases as none.
+    // Pi's map, when the binary is built (above): the same case as the JS map it would run otherwise.
     else if (name === 'reference.js' && a === 'map') captureMap(b || process.cwd(), process.env);
   }
 }

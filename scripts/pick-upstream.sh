@@ -15,7 +15,8 @@ UPSTREAM=dietrichgebert/ponytail
 # The hooks the Rust binary answers (fork #7, ADR 0002), with the JS each one ports: a pick that changes one of these
 # files leaves the binary on the old behaviour until the Rust catches up. Add a hook here when it is wired.
 PORTED=(
-  "subagent-start: hooks/ponytail-subagent.js hooks/ponytail-runtime.js hooks/ponytail-config.js hooks/ponytail-instructions.js"
+  "hook subagent-start: hooks/ponytail-subagent.js hooks/ponytail-runtime.js hooks/ponytail-config.js hooks/ponytail-instructions.js"
+  "map: hooks/ponytail-map.js"
 )
 RISKY='fetch\(|https?\.|XMLHttpRequest|child_process|\bspawn|\bexec(Sync|File)?\(|\.exec\(|\beval\(|new Function|process\.env\.[A-Za-z_]+ *=[^=]|delete process\.env|rmSync|unlinkSync|\$\.process\.run|\$\.http'
 
@@ -37,7 +38,7 @@ warn_ported() {
       if grep -qxF "$file" <<<"$changed"; then hit+=("$file"); fi
     done
     if (( ${#hit[@]} )); then
-      echo "Warning: #$n changes ${hit[*]}, which the Rust port of \`hook ${entry%%:*}\` reaches. Re-record the cases (node rust/cases/record.js) and run npm run check:rust: the binary keeps the old behaviour until its Rust is updated." >&2
+      echo "Warning: #$n changes ${hit[*]}, which the Rust port of \`${entry%%:*}\` reaches. Re-record the cases (node rust/cases/record.js) and run npm run check:rust: the binary keeps the old behaviour until its Rust is updated." >&2
     fi
   done
 }

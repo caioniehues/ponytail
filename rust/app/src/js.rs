@@ -2,6 +2,7 @@
 
 use std::env;
 
+use regex::{Regex, RegexBuilder};
 use serde_json::Value;
 
 /// JS `\s` as a regex class: the characters of [`is_space`].
@@ -89,6 +90,49 @@ fn number(n: f64) -> String {
     }
 }
 
+/// `Number(text)` for a string: JS-trimmed, empty is 0, `0x`/`0o`/`0b` integers without a sign, `Infinity` with
+/// one, and decimals (`5.`, `.5`, exponents) as Rust parses them; NaN for anything else.
+pub fn to_number(text: &str) -> f64 {
+    let text = trim(text);
+    if text.is_empty() {
+        return 0.0;
+    }
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
+        if let Some(digits) = text.strip_prefix(prefix) {
+            if digits.is_empty() {
+                return f64::NAN;
+            }
+            return digits
+                .chars()
+                .try_fold(0.0, |n, c| {
+                    c.to_digit(radix)
+                        .map(|d| n * f64::from(radix) + f64::from(d))
+                })
+                .unwrap_or(f64::NAN);
+        }
+    }
+    let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
+    if unsigned == "Infinity" {
+        return if text.starts_with('-') {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+    }
+    // Rust's grammar is JS's StrDecimalLiteral plus inf, infinity and nan in any case, which JS reads as NaN.
+    if unsigned.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return f64::NAN;
+    }
+    text.parse().unwrap_or(f64::NAN)
+}
+
 /// `path.posix.normalize`: `.` and `..` resolved, slashes collapsed, a trailing slash kept.
 pub fn normalize(path: &str) -> String {
     if path.is_empty() {
@@ -115,4 +159,44 @@ pub fn normalize(path: &str) -> String {
         out.push('/');
     }
     if absolute { format!("/{out}") } else { out }
+}
+
+/// A JS regex literal's source (no u flag) in the regex crate's syntax: `\s` is JS whitespace, `\w` is ASCII, and a
+/// `[` inside a class is a literal. Flags: `m` and `i`.
+pub fn regex(source: &str, flags: &str) -> Regex {
+    let space = SPACE;
+    let mut out = String::new();
+    let mut in_class = false;
+    let mut chars = source.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some('s') if in_class => out.push_str(&space[1..space.len() - 1]),
+                Some('s') => out.push_str(space),
+                Some('w') if in_class => out.push_str("0-9A-Za-z_"),
+                Some('w') => out.push_str("[0-9A-Za-z_]"),
+                Some(escaped) => {
+                    out.push('\\');
+                    out.push(escaped);
+                }
+                None => out.push('\\'),
+            },
+            '[' if in_class => out.push_str(r"\["),
+            '[' => {
+                in_class = true;
+                out.push('[');
+            }
+            ']' if in_class => {
+                in_class = false;
+                out.push(']');
+            }
+            _ => out.push(c),
+        }
+    }
+    RegexBuilder::new(&out)
+        .multi_line(flags.contains('m'))
+        .case_insensitive(flags.contains('i'))
+        .build()
+        // INFALLIBLE: callers pass fixed patterns, which the replayed cases compile.
+        .unwrap_or_else(|e| panic!("pattern {source:?} does not compile: {e}"))
 }

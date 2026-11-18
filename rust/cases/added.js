@@ -30,6 +30,39 @@ for (let i = 0; i < 8; i++) {
 nonAscii['proj/py/mod.py'] = 'def ñame():\n    pass\nclass Ünicode:\n    pass\ndef ascii_name():\n    pass\n';
 nonAscii['proj/emoji/e.js'] = 'export const smile😀 = 1;\nexport function 𝒻() {}\nexport function after() {}\n';
 
+const collation = {};
+for (const dir of ['B', 'b', 'a', 'A', 'Ab', 'ab', 'a_b', 'a-b', 'a.b', 'a(1)', 'a[1]', 'a@1', 'a+1', 'a$1', 'a1', 'a10', 'a9', 'z/lib', 'Util', 'a/b']) {
+  collation[dir + '/x.js'] = 'export function f' + dir.replace(/[^A-Za-z0-9]/g, '_') + '() {}\n';
+}
+const lineEnds = {
+  'crlf.js': 'const a = 1;\r\nexport function crlf() {}\rexport function cr() {}\r\n',
+  'ls.js': '// x\u2028export function lineSep() {}\u2029export const paraSep = 1\n',
+  'nbsp.js': 'export\u00A0function nbsp() {}\nexport {\u3000ideo,\u2028 other as renamed\u00A0}\n',
+  'bom.js': '\uFEFFexport function hidden() {}\nexport function shown() {}\n',
+  'r.rb': 'x = 1\r\n  def ruby_cr\r\nend\r\nmodule Mod::Inner\nend\n',
+};
+const manyFiles = {};
+for (let i = 0; i < 32; i++) manyFiles['kit/c' + i + '.js'] = 'export const k' + i + ' = 1\nexport const second' + i + ' = 2\n';
+for (let i = 0; i < 2; i++) manyFiles['few/f' + i + '.ts'] = 'export type T' + i + ' = 1\nexport enum E' + i + ' {}\nexport interface I' + i + ' {}\nexport let fourth' + i + ' = 1\n';
+Object.assign(manyFiles, {
+  'node_modules/m/i.js': 'export const nm = 1\n', '.hidden/h.js': 'export const hid = 1\n', 'src/a.test.js': 'export const t = 1\n',
+  'src/test_a.py': 'def t(): pass\n', 'src/x.d.ts': 'export type D = 1\n', 'src/x.min.js': 'export const m = 1\n', 'src/ok.js': 'export const ok = 1\n',
+  'src/_private.js': 'export const _p = 1\nexport default function () {}\n', 'src/README.md': 'export const md = 1\n',
+  'deep/1/2/3/4/5/6/x.js': 'export const six = 1\n', 'deep/1/2/3/4/5/6/7/x.js': 'export const seven = 1\n',
+});
+const languages = {
+  'go/a.go': 'func Exported() {}\nfunc private() {}\nfunc (r *Recv) Method() {}\ntype Thing struct{}\n',
+  'rs/a.rs': 'pub fn run() {}\npub async fn go() {}\npub(crate) fn hidden() {}\npub struct S;\npub trait T {}\n',
+  'py/a.py': 'async def fetch():\n    pass\ndef _private():\n    pass\nclass Model:\n    pass\n',
+  'rb/a.rb': 'class Foo::Bar\n  def baz; end\nend\n',
+  'jvm/A.java': 'public final class Main {}\nrecord Point(int x) {}\n',
+  'jvm/B.swift': 'open class View {}\ninterface Nope {}\n',
+  'jvm/C.cs': 'internal static partial class Helpers {}\n',
+  'php/a.php': '<?php\nfunction &refFn() {}\nfinal readonly class Value {}\nenum Suit {}\n',
+  'js/a.mjs': 'export default async function* gen() {}\nexport { a as b, type C, x.y, $dollar }\nexports = class Klass {}\nmodule.exports.nope = 1\n',
+  'js/b.cjs': 'module.exports = {\n  one,\n  two: three,\n}\n',
+};
+
 module.exports = [
   // Two sessions in one repo keep their own levels.
   prompt('two-sessions-switch', { session_id: 'B', prompt: '/ponytail lite' }, repo, two),
@@ -174,4 +207,19 @@ module.exports = [
   map('map-chars-zero', ['proj'], { PONYTAIL_MAP_CHARS: '0' }, nonAscii),
   map('map-chars-huge', ['proj'], { PONYTAIL_MAP_CHARS: '100000' }, nonAscii),
   map('map-chars-tiny', ['proj'], { PONYTAIL_MAP_CHARS: '20' }, nonAscii),
+  // JS Number(): hex, padded exponents (JS whitespace), Infinity and a signed hex (NaN) as the budget.
+  map('map-chars-hex', ['proj'], { PONYTAIL_MAP_CHARS: '0x40' }, nonAscii),
+  map('map-chars-exp', ['proj'], { PONYTAIL_MAP_CHARS: ' +.6e2\u00A0' }, nonAscii),
+  map('map-chars-inf', ['proj'], { PONYTAIL_MAP_CHARS: 'Infinity' }, nonAscii),
+  map('map-chars-neg-hex', ['proj'], { PONYTAIL_MAP_CHARS: '-0x10' }, nonAscii),
+  map('map-chars-bin', ['proj'], { PONYTAIL_MAP_CHARS: '0b1000000' }, nonAscii),
+  map('map-chars-oct', ['proj'], { PONYTAIL_MAP_CHARS: '0O777' }, nonAscii),
+  // localeCompare's order (ICU): punctuation, then digits, then letters with case second; shared folders first.
+  map('map-collation', ['.'], {}, collation),
+  // JS line terminators (\r, U+2028, U+2029) start a line for ^, JS \s takes U+00A0 and U+3000, a BOM hides the first line.
+  map('map-line-ends', ['.'], {}, lineEnds),
+  // Folders of many files list one name per file, past 30 names a ", ..."; skipped folders and files.
+  map('map-many-files', ['.'], {}, manyFiles),
+  // Every language's patterns.
+  map('map-languages', ['.'], {}, languages),
 ];
