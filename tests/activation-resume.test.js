@@ -75,3 +75,48 @@ test('a session id with no state file of its own falls back to the project level
   hook('ponytail-mode-tracker.js', JSON.stringify({ session_id: 'A', prompt: '/ponytail ultra' }));
   assert.equal(hook('ponytail-activate.js', JSON.stringify({ session_id: 'B', source: 'resume' })), '');
 });
+
+test('a fresh start removes session files untouched for 30 days', (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-prune-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: '', PLUGIN_DATA: '', COPILOT_PLUGIN_DATA: '', CURSOR_VERSION: '', CURSOR_PROJECT_DIR: '',
+    CODEBUDDY_PLUGIN_ROOT: '', CODEBUDDY_CONFIG_DIR: '', PONYTAIL_MAP: '0', HOME: temp, USERPROFILE: temp,
+    CLAUDE_PROJECT_DIR: '/work/repo', PONYTAIL_DEFAULT_MODE: 'full' };
+  const sessions = path.join(temp, '.claude', 'ponytail-sessions');
+  fs.mkdirSync(sessions, { recursive: true });
+  const day = 24 * 3600;
+  const now = Date.now() / 1000;
+  for (const [name, age] of [['stale', 31 * day], ['recent', 1 * day]]) {
+    fs.writeFileSync(path.join(sessions, name), 'ultra');
+    fs.utimesSync(path.join(sessions, name), now - age, now - age);
+  }
+
+  spawnSync(process.execPath, [path.join(__dirname, '..', 'hooks', 'ponytail-activate.js')], {
+    env, input: JSON.stringify({ session_id: 'new', source: 'startup' }), encoding: 'utf8',
+  });
+
+  assert.equal(fs.existsSync(path.join(sessions, 'stale')), false, 'a session file idle past 30 days is removed');
+  assert.equal(fs.existsSync(path.join(sessions, 'recent')), true, 'a recent session keeps its file');
+});
+
+test('a session resumed after 30 idle days keeps its own level', (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-prune-resume-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: '', PLUGIN_DATA: '', COPILOT_PLUGIN_DATA: '', CURSOR_VERSION: '', CURSOR_PROJECT_DIR: '',
+    CODEBUDDY_PLUGIN_ROOT: '', CODEBUDDY_CONFIG_DIR: '', PONYTAIL_MAP: '0', HOME: temp, USERPROFILE: temp,
+    CLAUDE_PROJECT_DIR: '/work/repo', PONYTAIL_DEFAULT_MODE: 'full' };
+  const hook = (script, session, payload) => spawnSync(process.execPath, [path.join(__dirname, '..', 'hooks', script)], {
+    env, input: JSON.stringify({ session_id: session, ...payload }), encoding: 'utf8',
+  }).stdout;
+
+  hook('ponytail-activate.js', 'A', { source: 'startup' });
+  hook('ponytail-mode-tracker.js', 'A', { prompt: '/ponytail ultra' });
+  // Another session leaves lite in the project file, so a pruned A would resume at lite.
+  hook('ponytail-activate.js', 'B', { source: 'startup' });
+  hook('ponytail-mode-tracker.js', 'B', { prompt: '/ponytail lite' });
+  const sessions = path.join(temp, '.claude', 'ponytail-sessions');
+  const old = Date.now() / 1000 - 31 * 24 * 3600;
+  for (const name of fs.readdirSync(sessions)) fs.utimesSync(path.join(sessions, name), old, old);
+
+  assert.equal(hook('ponytail-activate.js', 'A', { source: 'resume' }), 'PONYTAIL MODE ACTIVE — level: ultra');
+});

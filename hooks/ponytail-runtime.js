@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { createHash } = require('crypto');
+const { pruneStale } = require('./ponytail-prune');
 const { getClaudeDir, getQoderDir, isShellSafe } = require('./ponytail-config');
 
 const STATE_FILE = '.ponytail-active';
@@ -67,6 +68,12 @@ function bindSession(sessionId) {
   if (!id) return;
   sessionStatePath = path.join(stateDir, 'ponytail-sessions',
     createHash('sha256').update(id).digest('hex'));
+}
+
+// Nothing else deletes a session's file, so a fresh start drops the ones idle for 30 days.
+// shortcut: a session idle that long, resumed after another session started, resumes at the project level or the default; keep a longer age if that matters.
+function pruneSessions() {
+  pruneStale(path.join(stateDir, 'ponytail-sessions'));
 }
 
 // The project and shared flags are still written: the statusline, project-less hosts,
@@ -201,6 +208,7 @@ module.exports = {
   isCopilot,
   isCursor,
   isQoder,
+  pruneSessions,
   readMode,
   setMode,
   writeHookOutput,

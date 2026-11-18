@@ -25,6 +25,7 @@ const require = createRequire(import.meta.url);
 const { getPonytailInstructions } = require('../../hooks/ponytail-instructions');
 const { getDefaultMode, normalizeMode, writeDefaultMode } = require('../../hooks/ponytail-config');
 const { parseCommandFile, parseSkillFile } = require('./ponytail-frontmatter.cjs');
+const { pruneStale } = require('../../hooks/ponytail-prune');
 
 // OpenCode has no flag-file convention of its own; keep mode beside its config.
 // The level belongs to the session that set it, like Claude Code's "sticks
@@ -37,6 +38,10 @@ function statePath(sessionID) {
   const id = String(sessionID || '').replace(/[^A-Za-z0-9_-]/g, '');
   return id ? path.join(stateDir, 'ponytail-sessions', id) : path.join(stateDir, '.ponytail-active');
 }
+
+// Nothing else deletes a session's file, so loading the plugin drops the ones idle for 30 days.
+// shortcut: a session idle that long starts again at the default level; keep a longer age if that matters.
+const pruneSessions = () => pruneStale(path.join(stateDir, 'ponytail-sessions'));
 
 function readMode(sessionID) {
   try {
@@ -126,6 +131,7 @@ export default {
   id: 'ponytail',
 
   async setup(ctx) {
+    pruneSessions();
     const commands = readCommands();
     const skills = readSkills();
 
@@ -170,6 +176,7 @@ export default {
 
   // OpenCode V1: same three behaviors, as hooks on the V1 hook names.
   async server({ client } = {}) {
+    pruneSessions();
     const log = (level, message) => {
       try { client && client.app && client.app.log({ body: { service: 'ponytail', level, message } }); } catch (e) {}
     };

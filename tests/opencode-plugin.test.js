@@ -360,3 +360,21 @@ test('parseSkillFile folds >, keeps | lines, and stops at the next key', () => {
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+test('loading the plugin removes session files untouched for 30 days, under V2 and V1', async () => {
+  const sessions = path.join(tmp, 'opencode', 'ponytail-sessions');
+  const seed = () => {
+    fs.mkdirSync(sessions, { recursive: true });
+    const now = Date.now() / 1000;
+    for (const [name, days] of [['stale-load', 31], ['recent-load', 1]]) {
+      fs.writeFileSync(path.join(sessions, name), 'ultra');
+      fs.utimesSync(path.join(sessions, name), now - days * 24 * 3600, now - days * 24 * 3600);
+    }
+  };
+  for (const load of [() => setupV2(), () => loadPlugin.server({})]) {
+    seed();
+    await load();
+    assert.equal(fs.existsSync(path.join(sessions, 'stale-load')), false, 'a session file idle past 30 days is removed');
+    assert.equal(fs.existsSync(path.join(sessions, 'recent-load')), true, 'a recent session keeps its file');
+  }
+});

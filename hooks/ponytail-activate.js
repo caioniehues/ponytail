@@ -21,6 +21,7 @@ const {
   isCodex,
   isCopilot,
   isCursor,
+  pruneSessions,
   readMode,
   setMode,
   writeHookOutput,
@@ -203,7 +204,10 @@ function finish() {
   } catch (e) {
     // No payload, or an unparseable one: treat it as a fresh session
   }
-  activate(source === 'compact' || source === 'resume' ? (readMode() || 'off') : getDefaultMode(), source);
+  const resumed = source === 'compact' || source === 'resume';
+  // Only a fresh start prunes: a resume reads its own file, however old.
+  if (!resumed) pruneSessions();
+  activate(resumed ? (readMode() || 'off') : getDefaultMode(), source);
 }
 
 process.stdin.on('data', chunk => { input += chunk; });
