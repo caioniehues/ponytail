@@ -1,5 +1,5 @@
 bin.name = "ponytail"
-args = ["hook", "prompt-submit"]
+args = ["hook", "👍🏽 thumbs"]
 env.add.CLAUDE_CONFIG_DIR = ""
 env.add.CLAUDE_PLUGIN_ROOT = ""
 env.add.CLAUDE_PROJECT_DIR = ""
@@ -19,6 +19,6 @@ env.add.QODER_PROJECT_DIR = ""
 env.add.QODER_SESSION_ID = ""
 env.add.USERPROFILE = "default-cmd-home"
 env.add.XDG_CONFIG_HOME = "default-cmd-home/.config"
-status.code = 0
+status.code = 2
 fs.sandbox = true
 fs.base = "trap-142-hook.in"

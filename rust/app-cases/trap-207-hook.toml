@@ -1,5 +1,5 @@
 bin.name = "ponytail"
-args = ["hook", "héllo wörld"]
+args = ["hook", "prompt-submit"]
 env.add.CLAUDE_CONFIG_DIR = "hang-home"
 env.add.CLAUDE_PLUGIN_ROOT = ""
 env.add.CLAUDE_PROJECT_DIR = ""
@@ -19,5 +19,5 @@ env.add.QODER_PROJECT_DIR = ""
 env.add.QODER_SESSION_ID = ""
 env.add.USERPROFILE = "hang-home"
 env.add.XDG_CONFIG_HOME = ""
-status.code = 2
+status.code = 0
 fs.sandbox = true

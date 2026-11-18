@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod hook;
 mod instructions;
 mod js;

@@ -17,6 +17,7 @@ UPSTREAM=dietrichgebert/ponytail
 PORTED=(
   "hook subagent-start: hooks/ponytail-subagent.js hooks/ponytail-runtime.js hooks/ponytail-config.js hooks/ponytail-instructions.js"
   "map: hooks/ponytail-map.js"
+  "hook prompt-submit: hooks/ponytail-mode-tracker.js hooks/ponytail-runtime.js hooks/ponytail-config.js hooks/ponytail-instructions.js"
 )
 RISKY='fetch\(|https?\.|XMLHttpRequest|child_process|\bspawn|\bexec(Sync|File)?\(|\.exec\(|\beval\(|new Function|process\.env\.[A-Za-z_]+ *=[^=]|delete process\.env|rmSync|unlinkSync|\$\.process\.run|\$\.http'
 

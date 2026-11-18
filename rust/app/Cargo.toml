@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 clap = "4"
 regex = "1"
-serde_json = "1"
+# preserve_order: `/ponytail default` rewrites the user's config.json with its keys in the order they were written.
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [workspace]

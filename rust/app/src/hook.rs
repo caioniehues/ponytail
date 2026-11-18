@@ -56,9 +56,14 @@ pub fn write_context(event: &str, context: &str) {
         Value::from(event),
         Value::from(context)
     );
+    write(&json);
+}
+
+/// Text on stdout as it is: what Claude Code adds to a UserPromptSubmit prompt as context.
+pub fn write(text: &str) {
     let mut stdout = io::stdout().lock();
     // A stdout closed at hook exit is not a hook failure.
     let _ = stdout
-        .write_all(json.as_bytes())
+        .write_all(text.as_bytes())
         .and_then(|()| stdout.flush());
 }

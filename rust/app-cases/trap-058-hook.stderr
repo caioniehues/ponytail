@@ -1,3 +1,4 @@
-./band-pick-home/.claude/ponytail-pending/A
-./band-pick-home/.claude/ponytail-sessions/559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd
-./band-pick-home/.claude/ponytail-sessions/df7e70e5021544f4834bbee64a9e3789febc4be81470df629cad6ddb03320a5c
+./per-project-home/.claude/.ponytail-statusline-nudged
+./per-project-home/.claude/ponytail-modes/1d2ad7c70604d489140981629f0b411003f2717dc7943bc46171faa96ee53f70
+./per-project-home/.claude/ponytail-modes/f48cd4cfedda17a29f860fb93e96fec6143359e5bfd29dd65aa7e98e69f11520
+./per-project-home/.claude/ponytail-statusline.sh

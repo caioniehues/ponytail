@@ -1,4 +1,4 @@
 usage: ponytail hook session-start|subagent-start|prompt-submit | ponytail map [root]
-./band-pick-home/.claude/ponytail-pending/A
-./band-pick-home/.claude/ponytail-sessions/559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd
-./band-pick-home/.claude/ponytail-sessions/df7e70e5021544f4834bbee64a9e3789febc4be81470df629cad6ddb03320a5c
+./compact-home/.claude/.ponytail-active
+./compact-home/.claude/.ponytail-statusline-nudged
+./compact-home/.claude/ponytail-statusline.sh

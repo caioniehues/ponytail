@@ -1,2 +1,4 @@
 usage: ponytail hook session-start|subagent-start|prompt-submit | ponytail map [root]
-./review-latch-home/.claude/.ponytail-active
+./default-cmd-home/.claude/.ponytail-active
+./default-cmd-home/.claude/.ponytail-band
+./default-cmd-home/.config/ponytail/config.json

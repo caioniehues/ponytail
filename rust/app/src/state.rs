@@ -3,8 +3,10 @@
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 
+use crate::level::Level;
 use crate::{js, sha256};
 
 /// The files that hold one hook's level, from the session and the project Claude Code names.
@@ -52,10 +54,44 @@ impl LevelFiles {
         }
         None
     }
+
+    /// `setMode`: the session's file, the project's and the shared flag, which the statusline and the band read.
+    pub fn set_mode(&self, level: Level) -> io::Result<()> {
+        let level = level.to_string();
+        for file in self
+            .session
+            .iter()
+            .chain(&self.project)
+            .chain([&self.shared])
+        {
+            write_file(file, &level)?;
+        }
+        Ok(())
+    }
+
+    /// `clearMode`: the session records off, so a stopped session is told from one with no file yet; the project
+    /// file and the shared flag go.
+    pub fn clear_mode(&self) -> io::Result<()> {
+        if let Some(file) = &self.session {
+            write_file(file, "off")?;
+        }
+        for file in self.project.iter().chain([&self.shared]) {
+            let _ = fs::remove_file(file);
+        }
+        Ok(())
+    }
+}
+
+/// `fs.mkdirSync(path.dirname(file), { recursive: true })`, then `fs.writeFileSync(file, text)`.
+pub fn write_file(file: &Path, text: &str) -> io::Result<()> {
+    if let Some(dir) = file.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    fs::write(file, text)
 }
 
 /// `getClaudeDir`: CLAUDE_CONFIG_DIR, as Claude Code reads it, else ~/.claude.
-fn claude_dir() -> PathBuf {
+pub fn claude_dir() -> PathBuf {
     match js::env("CLAUDE_CONFIG_DIR") {
         dir if !dir.is_empty() => PathBuf::from(dir),
         _ => home().join(".claude"),
@@ -63,7 +99,7 @@ fn claude_dir() -> PathBuf {
 }
 
 /// `os.homedir()`: HOME as it is set, even empty, else the user's entry in the password database.
-fn home() -> PathBuf {
+pub fn home() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
         .or_else(env::home_dir)
