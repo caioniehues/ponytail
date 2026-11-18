@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { boardHtml, tasksFrom } from './board'
+import { base, boardHtml, tasksFrom } from './board'
 import type { Band } from './types'
 import type { Col } from './metrics'
 import {
@@ -75,7 +75,6 @@ const band = atom({ plugin: 'ponytail', key: 'band' } as const, EMPTY)
 // State kept from an older version of the band lacks newer fields.
 const load = async ($: EngineInterface): Promise<Band> => ({ ...EMPTY, ...(await read($, band)) })
 
-const base = (path: string) => path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? path
 
 // Windows sets USERPROFILE, not HOME.
 const home = async ($: EngineInterface) => (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
@@ -107,22 +106,24 @@ const run = ($: EngineInterface, command: string, args = '') => $.command.run({ 
 
 type Options = { readonly [field: string]: unknown }
 
-// The session's sidebar name. grep, because $.fs.read refuses files over 4 MiB and transcripts grow past that.
+// The lines of a transcript grep keeps, or the whole file without grep; undefined when neither can read it.
+// grep, because $.fs.read refuses files over 4 MiB and transcripts grow past that.
 // shortcut: without grep (Windows) only a transcript under 4 MiB is read; findstr would lift that.
+async function grepOrRead($: EngineInterface, args: string[], file: string): Promise<string | undefined> {
+  const grep = await $.process.run(['grep', ...args, file]).catch(() => undefined)
+  return grep !== undefined && grep.exitCode <= 1 ? grep.stdout : await $.fs.read(file).catch(() => undefined)
+}
+
+// The session's sidebar name.
 async function readTitle($: EngineInterface, transcript: string): Promise<string | undefined> {
   if (transcript === '') return undefined
-  const grep = await $.process.run(['grep', '-F', TITLE_RECORD, transcript]).catch(() => undefined)
-  const text = grep !== undefined && grep.exitCode <= 1 ? grep.stdout : await $.fs.read(transcript).catch(() => '')
-  return sessionTitle(text)
+  return sessionTitle((await grepOrRead($, ['-F', TITLE_RECORD], transcript)) ?? '')
 }
 
 // The model that wrote most of the session's replies, so the board can tell models apart.
 async function readModel($: EngineInterface, transcript: string): Promise<string> {
   if (transcript === '') return ''
-  const grep = await $.process.run(['grep', '-o', MODEL_PATTERN, transcript]).catch(() => undefined)
-  // shortcut: without grep (Windows) only a transcript under 4 MiB is read, like readTitle; findstr would lift that.
-  const text = grep !== undefined && grep.exitCode <= 1 ? grep.stdout : await $.fs.read(transcript).catch(() => '')
-  return mainModel(text)
+  return mainModel((await grepOrRead($, ['-o', MODEL_PATTERN], transcript)) ?? '')
 }
 
 // Every tool call the session made, which toolsSummary folds into the band: the tests they ran, the definitions they
@@ -131,11 +132,7 @@ async function readModel($: EngineInterface, transcript: string): Promise<string
 // shortcut: replays every tool call each turn, so a long session re-reads itself; a saved byte offset would lift that.
 async function readCalls($: EngineInterface, transcript: string) {
   if (transcript === '') return undefined
-  const read = async (file: string) => {
-    const grep = await $.process.run(['grep', '-F', '-e', TOOL_USE_RECORD, '-e', TOOL_RESULT_RECORD, file]).catch(() => undefined)
-    // shortcut: without grep (Windows) only a transcript under 4 MiB is read, like readTitle; findstr would lift that.
-    return grep !== undefined && grep.exitCode <= 1 ? grep.stdout : await $.fs.read(file).catch(() => undefined)
-  }
+  const read = (file: string) => grepOrRead($, ['-F', '-e', TOOL_USE_RECORD, '-e', TOOL_RESULT_RECORD], file)
   const text = await read(transcript)
   if (text === undefined) return undefined
   const dir = `${transcript.replace(/\.jsonl$/, '')}/subagents`

@@ -62,6 +62,9 @@ export function parseCsv(text: string): string[][] {
   return rows
 }
 
+// The last name of a path, either slash, a trailing one ignored: a repo root's folder names its project.
+export const base = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path
+
 export function tasksFrom(text: string): Task[] {
   const [head, ...rows] = parseCsv(text)
   if (!head?.includes('key')) return []
@@ -71,7 +74,7 @@ export function tasksFrom(text: string): Task[] {
   const tasks = rows.map(row => ({
     started: at(row, 'started'),
     // Windows rows may hold the whole path, drive letter in either case (#1440): the folder names the project, as the import does.
-    project: at(row, 'project').replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '',
+    project: base(at(row, 'project')),
     name: at(row, 'name'),
     cost: num(row, 'cost_usd'),
     turns: num(row, 'turns'),
