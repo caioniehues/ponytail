@@ -10,6 +10,10 @@ rust-anything app replay . --build "sh rust/run-case.sh rust/app/target/release/
 for crate in rust/*/; do
   if [ "$crate" != rust/app/ ] && [ -f "$crate/Cargo.toml" ]; then rust-anything gate "$crate"; fi
 done
+if grep -rnE '\b(todo|unimplemented)!' rust/app/src; then
+  echo "check:rust: the front door has unimplemented code (above)" >&2
+  exit 1
+fi
 cargo fmt --check --manifest-path rust/app/Cargo.toml
 cargo clippy --release --quiet --manifest-path rust/app/Cargo.toml -- -D warnings
 cargo test --release --quiet --manifest-path rust/app/Cargo.toml

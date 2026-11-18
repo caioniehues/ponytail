@@ -12,6 +12,11 @@
 set -euo pipefail
 
 UPSTREAM=dietrichgebert/ponytail
+# The hooks the Rust binary answers (fork #7, ADR 0002), with the JS each one ports: a pick that changes one of these
+# files leaves the binary on the old behaviour until the Rust catches up. Add a hook here when it is wired.
+PORTED=(
+  "subagent-start: hooks/ponytail-subagent.js hooks/ponytail-runtime.js hooks/ponytail-config.js hooks/ponytail-instructions.js"
+)
 RISKY='fetch\(|https?\.|XMLHttpRequest|child_process|\bspawn|\bexec(Sync|File)?\(|\.exec\(|\beval\(|new Function|process\.env\.[A-Za-z_]+ *=[^=]|delete process\.env|rmSync|unlinkSync|\$\.process\.run|\$\.http'
 
 scan() {
@@ -20,6 +25,21 @@ scan() {
   hits=$(git --no-pager diff "$from" "pr-$n" | awk '/^\+\+\+ /{f=substr($0,7); next} /^\+/{print f ": " substr($0,2)}' | grep -E "$RISKY" | cut -c1-180 || true)
   echo "#$n adds these lines that reach the network, processes, eval, the environment or deletion (the check runs them):"
   if [[ -n "$hits" ]]; then echo "  ${hits//$'\n'/$'\n'  }"; else echo "  (none)"; fi
+  warn_ported "$n" "$from"
+}
+
+warn_ported() {
+  local n="$1" changed entry file hit
+  changed=$(git diff --name-only "$2" "pr-$n")
+  for entry in "${PORTED[@]}"; do
+    hit=()
+    for file in ${entry#*:}; do
+      if grep -qxF "$file" <<<"$changed"; then hit+=("$file"); fi
+    done
+    if (( ${#hit[@]} )); then
+      echo "Warning: #$n changes ${hit[*]}, which the Rust port of \`hook ${entry%%:*}\` reaches. Re-record the cases (node rust/cases/record.js) and run npm run check:rust: the binary keeps the old behaviour until its Rust is updated." >&2
+    fi
+  done
 }
 
 cite_and_check() {

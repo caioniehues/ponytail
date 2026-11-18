@@ -16,6 +16,12 @@ const BASE = {
   QODER_CONFIG_DIR: '', CODEBUDDY_PLUGIN_ROOT: '', CODEBUDDY_CONFIG_DIR: '', CURSOR_VERSION: '', CURSOR_PROJECT_DIR: '',
   PONYTAIL_DEFAULT_MODE: '', PONYTAIL_MAP: '', PONYTAIL_MAP_CHARS: '', PONYTAIL_SUBAGENT_MATCHER: '',
 };
+// Harvested runs whose JS answer is timing, not behaviour, left out on purpose (fork #7 decided each).
+const SKIP = [
+  // A backtracking subagent matcher: the JS injects when its 100 ms guard runs out; the regex crate runs in linear
+  // time and gives the match's own answer.
+  (c) => c.args[1] === 'subagent-start' && c.env.PONYTAIL_SUBAGENT_MATCHER === '(a+)+$',
+];
 const SUITES = [
   [repo, ['tests/hooks.test.js', 'tests/activation-resume.test.js', 'tests/hooks-windows.test.js', 'tests/map.test.js']],
   [path.join(repo, 'pi-extension'), ['test/extension.test.js']],
@@ -51,7 +57,7 @@ try {
     // Named by its content once the renames are done, so a case keeps its name from one recording to the next.
     const id = crypto.createHash('sha256').update(JSON.stringify({ ...c, name: '' })).digest('hex').slice(0, 6);
     c.name = c.name.replace(/[0-9a-f]{6}$/, id);
-    unique.set(c.name, c);
+    if (!SKIP.some((skip) => skip(c))) unique.set(c.name, c);
   }
   const cases = [...[...unique.values()].sort((a, b) => a.name.localeCompare(b.name)), ...require('./added')]
     .map((c) => ({ ...c, env: { ...BASE, ...c.env } }));

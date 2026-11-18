@@ -3,7 +3,6 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, ExitCode, ExitStatus};
 
-const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 // The reference itself: rust/run-case.sh only wraps a whole build when the cases are replayed.
 const RUN: &[&str] = &["node", "rust/reference.js"];
 const FALLBACK_LOG: &str = "RUST_ANYTHING_FALLBACK_LOG";
@@ -12,7 +11,7 @@ fn resolve(word: &str) -> OsString {
     if word.starts_with('-') {
         return word.into();
     }
-    let path = Path::new(ROOT).join(word);
+    let path = Path::new(crate::PLUGIN_ROOT).join(word);
     let looks_like_path = word.contains('/') || word.contains('\\') || path.is_file();
     if looks_like_path && path.exists() {
         return std::path::absolute(&path).unwrap_or(path).into_os_string();
