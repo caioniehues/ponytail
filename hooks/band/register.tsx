@@ -119,7 +119,9 @@ async function readTitle($: EngineInterface, transcript: string): Promise<string
 async function readModel($: EngineInterface, transcript: string): Promise<string> {
   if (transcript === '') return ''
   const grep = await $.process.run(['grep', '-o', MODEL_PATTERN, transcript]).catch(() => undefined)
-  return grep?.exitCode === 0 ? mainModel(grep.stdout) : ''
+  // shortcut: without grep (Windows) only a transcript under 4 MiB is read, like readTitle; findstr would lift that.
+  const text = grep !== undefined && grep.exitCode <= 1 ? grep.stdout : await $.fs.read(transcript).catch(() => '')
+  return mainModel(text)
 }
 
 // What the session's tools did to the board: the tests they ran, the definitions they wrote, the known names they call.
@@ -128,8 +130,10 @@ async function readModel($: EngineInterface, transcript: string): Promise<string
 async function readTools($: EngineInterface, transcript: string, known: Map<string, string>, root: string) {
   if (transcript === '') return undefined
   const grep = await $.process.run(['grep', '-F', '-e', TOOL_USE_RECORD, '-e', TOOL_RESULT_RECORD, transcript]).catch(() => undefined)
-  if (grep === undefined || grep.exitCode > 1) return undefined
-  return toolsSummary(toolCalls(grep.stdout), root, known)
+  // Without grep (Windows) only a transcript under 4 MiB is read, like readTitle.
+  const text = grep !== undefined && grep.exitCode <= 1 ? grep.stdout : await $.fs.read(transcript).catch(() => undefined)
+  if (text === undefined) return undefined
+  return toolsSummary(toolCalls(text), root, known)
 }
 
 // Where Claude Code keeps the session's transcript: on managed, Team and Enterprise machines its cc-plugin-sec-default skips every classic.* hook, so no hook hands the path over.

@@ -645,6 +645,35 @@ test('a turn reads the tests, reuse and stale tests out of its transcript', asyn
   await ui.unmount()
 })
 
+test('without grep (Windows) a turn still reads the tests and the model from the transcript', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const transcript = '/home/u/.claude/projects/-repo/s1.jsonl'
+  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('session.repo', () => ({ value: { root: '/repo' } }) as never)
+  on('session.root', () => ({ value: '-repo' }))
+  on('session.id', () => ({ value: 's1' }))
+  on('session.turns', () => ({ value: 1 }))
+  on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0.5 } } }) as never)
+  on('fs.exists', ($, e) => ({ value: e.path === transcript }))
+  on('fs.read', ($, e) => (e.path === transcript ? { value: BAND_SESSION } : { deny: 'missing' }) as never)
+  on('fs.list', () => ({ value: [] }) as never)
+  const rows: string[] = []
+  on('fs.write', ($, e) => {
+    if (e.path.endsWith('repo.csv')) rows.push(e.text)
+    return { value: undefined }
+  })
+  on('process.run', ($, e) => (e.argv[0] === 'grep' ? { deny: 'grep: not found' } : { value: { exitCode: 1, stdout: '', stderr: '' } }) as never)
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('turn.complete', () => ({ text: '' }))
+  const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'terminal', ...BAND })
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+  expect(await ui.find({ type: 'Text', text: /✓ 15 tests/ })).toBeDefined()
+  expect(rows.at(-1)).toContain('claude-opus-5-5')
+  await ui.unmount()
+})
+
 test('the start-up definition search reads only the source files the band parses (#1443)', async ($, on) => {
   mock.clock(on)
   mock.store(on)
