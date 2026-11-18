@@ -35,6 +35,9 @@ jobs:
       - name: Check version consistency
         run: node scripts/check-versions.js
 
+      - name: Validate the plugin and type-check the band
+        run: npm run check:plugin
+
       - name: Run tests
         run: npm test
 
