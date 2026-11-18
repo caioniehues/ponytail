@@ -1,0 +1,32 @@
+name: band on the latest Claude Code
+
+# test.yml pins one Claude Code version. This runs the band's checks on the
+# newest release each week, so an engine change that breaks the band (2.1.321's
+# AbovePrompt wrapper, 2.1.327's isCollapsed prop) shows up within a week.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  band:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install the latest Claude Code
+        run: npm install -g @anthropic-ai/claude-code@latest && claude --version
+
+      - name: Validate the plugin and type-check the band
+        run: npm run check:plugin
+
+      - name: Run band tests
+        run: npm run test:band
