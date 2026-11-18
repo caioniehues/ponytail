@@ -32,10 +32,22 @@ _Avoid_: log, history, CSV
 The page that compares a project's tasks, built from its ledger.
 _Avoid_: dashboard, report
 
+**Spec**:
+A parent issue on the tracker whose sub-issues are its tickets.
+_Avoid_: epic, project (the project is the repo)
+
+**Ticket**:
+An issue on the tracker that tasks work on; one of a spec's sub-issues.
+_Avoid_: task (a task is a session), card
+
+**Braid**:
+A spec's tickets as a graph, joined by their blocking links, with the tasks that worked each ticket and what each cost.
+_Avoid_: task graph
+
 **Reference**:
 The JS hooks and map, as the Rust port must behave: `rust/reference.js` runs them by subcommand, and the recorded cases come from it.
 _Avoid_: original (rust-anything's word), legacy
 
 **Front door**:
-The `ponytail` binary in `rust/app`: it takes every subcommand and runs the Rust for the ported ones and the reference for the rest.
+The `ponytail` binary in `rust/app`: it takes every subcommand and answers each in Rust, without the reference.
 _Avoid_: wrapper, shim
