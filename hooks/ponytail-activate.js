@@ -59,8 +59,8 @@ function activate(mode, source) {
     // Silent fail -- flag is best-effort, don't block the hook
   }
 
-  // Resume already has the ruleset in its transcript; only remind it of the live level.
-  if (source === 'resume') {
+  // Resume and fork already have the ruleset in their transcript; only remind them of the live level.
+  if (source === 'resume' || source === 'fork') {
     try {
       writeHookOutput('SessionStart', mode, 'PONYTAIL MODE ACTIVE — level: ' + mode);
     } catch (e) {
@@ -189,6 +189,14 @@ function activate(mode, source) {
 // live level (or stays off after "stop ponytail") instead of resetting to the
 // default. Claude Code and Codex pass the trigger as `source` on stdin; reading
 // it there keeps the hook entry, and the trust Codex gave it, unchanged.
+// A fork (--fork-session, /fork, /branch) goes on with a copy of the conversation
+// under a new id. Claude Code starts it with source "fork", from hooks/claude-hooks.json
+// (Codex hashes the matcher into its trust, so the shared file keeps its own). The fork
+// takes the level readMode finds and keeps it as its own, so later switches in other
+// sessions no longer reach it (fork #15).
+// shortcut: a fork has no file yet, so it starts at the repo's last switch, which is its parent's level unless another
+// session in the repo switched since, read the parent's level once Claude Code passes the parent id (2.1.327 passes
+// none, and writes the fork's transcript only after its first prompt).
 let input = '';
 let done = false;
 
@@ -204,7 +212,7 @@ function finish() {
   } catch (e) {
     // No payload, or an unparseable one: treat it as a fresh session
   }
-  const resumed = source === 'compact' || source === 'resume';
+  const resumed = source === 'compact' || source === 'resume' || source === 'fork';
   // Only a fresh start prunes: a resume reads its own file, however old.
   if (!resumed) pruneSessions();
   activate(resumed ? (readMode() || 'off') : getDefaultMode(), source);

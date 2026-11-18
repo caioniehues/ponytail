@@ -79,6 +79,36 @@ test('a session id with no state file of its own falls back to the project level
   assert.equal(hook('ponytail-activate.js', JSON.stringify({ session_id: 'B', source: 'resume' })), '');
 });
 
+test('a forked session starts at the repo level and keeps it once another session switches (#15)', (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-fork-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: '', PLUGIN_DATA: '', COPILOT_PLUGIN_DATA: '', CURSOR_VERSION: '', CURSOR_PROJECT_DIR: '',
+    CODEBUDDY_PLUGIN_ROOT: '', CODEBUDDY_CONFIG_DIR: '', PONYTAIL_MAP: '0', HOME: temp, USERPROFILE: temp,
+    CLAUDE_PROJECT_DIR: '/work/shared-repo', PONYTAIL_DEFAULT_MODE: 'full' };
+  const hook = (script, session, payload) => spawnSync(process.execPath, [path.join(__dirname, '..', 'hooks', script)], {
+    env, input: JSON.stringify({ session_id: session, ...payload }), encoding: 'utf8',
+  }).stdout;
+
+  // --fork-session, /fork and /branch start SessionStart with source "fork": the hook runs only if registered for it.
+  // Codex hashes each hook's matcher into its trust, so the file it shares keeps its matcher and Claude Code gets fork
+  // from a file of its own.
+  const matchers = (manifest) => [].concat(JSON.parse(fs.readFileSync(path.join(__dirname, '..', manifest), 'utf8')).hooks)
+    .flatMap(file => JSON.parse(fs.readFileSync(path.join(__dirname, '..', file), 'utf8')).hooks.SessionStart ?? [])
+    .map(entry => entry.matcher)
+  const fires = (manifest, source) => matchers(manifest).some(m => new RegExp(`^(${m})$`).test(source))
+  assert.ok(fires('.claude-plugin/plugin.json', 'fork'), 'Claude Code runs the SessionStart hook for a fork');
+  assert.deepEqual(matchers('.codex-plugin/plugin.json'), ['startup|resume|clear|compact'], 'a changed matcher makes Codex ask for trust again');
+
+  hook('ponytail-activate.js', 'A', { source: 'startup' });
+  hook('ponytail-mode-tracker.js', 'A', { prompt: '/ponytail ultra' });
+  // A fork of A: a new id with no file of its own, and no parent id in the payload.
+  assert.equal(context(hook('ponytail-activate.js', 'F', { source: 'fork' })), 'PONYTAIL MODE ACTIVE — level: ultra');
+  // Another session in the repo switches afterwards; the fork's compaction keeps the fork's own level.
+  hook('ponytail-activate.js', 'B', { source: 'startup' });
+  hook('ponytail-mode-tracker.js', 'B', { prompt: '/ponytail lite' });
+  assert.match(context(hook('ponytail-activate.js', 'F', { source: 'compact' })), /^PONYTAIL MODE ACTIVE — level: ultra\n/);
+});
+
 test('a fresh start removes session files untouched for 30 days', (t) => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-prune-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
