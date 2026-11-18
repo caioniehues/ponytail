@@ -292,9 +292,11 @@ export const register: Register = (on, options) => {
     // shortcut: name match with git grep, so a same-named call in another module counts too.
     const stillRemoved: string[] = []
     const open: string[] = []
+    // One search for every name: a search each walked the repo once more on every turn, for every name the session removed.
+    const grep = removed.length === 0 ? undefined : await $.process.run(['git', 'grep', '-I', '--untracked', '-nw', ...removed.flatMap(name => ['-e', name])]).catch(() => undefined)
+    // The checks below each look for one name, so a row another name found never counts for it.
+    const rows = hits(grep?.stdout ?? '')
     for (const name of removed) {
-      const grep = await $.process.run(['git', 'grep', '-I', '--untracked', '-nw', '-e', name]).catch(() => undefined)
-      const rows = hits(grep?.stdout ?? '')
       if (rows.some(r => defsIn(r.file, r.text.trimStart()).includes(name))) continue
       const call = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}\\s*\\(`)
       const refs = rows.filter(r => call.test(r.text)).map(r => `${r.file}:${r.line}`)

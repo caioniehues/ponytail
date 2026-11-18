@@ -645,6 +645,74 @@ test('a turn reads the tests, reuse and stale tests out of its transcript', asyn
   await ui.unmount()
 })
 
+// A turn whose Edit removes two definitions: `legacy` is still called, `stale` is defined again in another file.
+async function removeTwo($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters<Parameters<typeof test>[1]>[1]) {
+  const transcript = '/home/u/.claude/projects/-repo/s1.jsonl'
+  const OLD = 'export function legacy(cart: Cart) {\n  return 0\n}\nexport function stale() {\n  return 1\n}'
+  const toolLines = [
+    JSON.stringify({ type: 'assistant', message: { id: 'm1', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/repo/src/cart.ts', old_string: OLD, new_string: '', replace_all: false } }] } }),
+    JSON.stringify({ type: 'user', message: { role: 'user', content: [{ tool_use_id: 't1', type: 'tool_result', content: 'The file /repo/src/cart.ts has been updated.', is_error: false }] } }),
+  ].join('\n')
+  // What git grep -nw finds for each name; a line that holds both names comes back once.
+  const found: Record<string, string[]> = {
+    legacy: ['src/app.ts:3:  legacy(cart)', 'src/mix.ts:2:  legacy(stale)'],
+    stale: ['src/mix.ts:2:  legacy(stale)', 'src/other.ts:1:export function stale() {'],
+  }
+  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('session.repo', () => ({ value: { root: '/repo' } }) as never)
+  on('session.root', () => ({ value: '-repo' }))
+  on('session.id', () => ({ value: 's1' }))
+  on('session.turns', () => ({ value: 1 }))
+  on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0.5 } } }) as never)
+  on('fs.exists', ($, e) => ({ value: e.path === transcript }))
+  on('fs.read', () => ({ value: '' }))
+  on('fs.list', () => ({ value: [] }) as never)
+  const rows: string[] = []
+  on('fs.write', ($, e) => {
+    if (e.path.endsWith('repo.csv')) rows.push(e.text)
+    return { value: undefined }
+  })
+  const callerSearches: string[][] = []
+  on('process.run', ($, e) => {
+    const argv = e.argv
+    if (argv.includes(TOOL_USE_RECORD)) return { value: { exitCode: 0, stdout: toolLines, stderr: '' } }
+    if (argv[0] === 'git' && argv[1] === 'grep' && !argv.includes('-nE')) {
+      callerSearches.push([...argv])
+      const lines = [...new Set(Object.entries(found).flatMap(([name, ls]) => (argv.includes(name) ? ls : [])))].sort()
+      return { value: { exitCode: lines.length > 0 ? 0 : 1, stdout: lines.join('\n'), stderr: '' } }
+    }
+    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+  })
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('turn.complete', () => ({ text: '' }))
+  const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'terminal', ...BAND })
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+  return { ui, rows, callerSearches }
+}
+
+test('a removed definition still called is open at each call, one defined again elsewhere is not', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const { ui, rows } = await removeTwo($, on)
+  expect(await ui.find({ type: 'Text', text: /⚠ 2 callers open/ })).toBeDefined()
+  // reuse_pct, reused, new, callers_open, tests in the ledger.
+  expect(rows.at(-1)).toContain(',,0,0,2,not run,')
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ type: 'Text', text: 'src/app.ts:3, src/mix.ts:2' })).toBeDefined()
+  await ui.press({ key: 'details' })
+  await ui.unmount()
+})
+
+test('a turn searches the callers of every removed definition at once', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const { ui, callerSearches } = await removeTwo($, on)
+  // One search, whatever the number of names: each one more was another walk of the repo on every turn.
+  expect(callerSearches).toHaveLength(1)
+  await ui.unmount()
+})
+
 test('without grep (Windows) a turn still reads the tests and the model from the transcript', async ($, on) => {
   mock.clock(on)
   mock.store(on)
