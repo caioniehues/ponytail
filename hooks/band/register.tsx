@@ -200,6 +200,7 @@ async function writeBoard($: EngineInterface, dir: string) {
   const texts = await Promise.all(entries.filter(f => f.kind === 'file' && f.name.endsWith('.csv')).map(f => $.fs.read(`${dir}/${f.name}`).catch(() => '')))
   const file = `${dir}/board.html`
   // The folder found under its upper-case name: a file system that ignores case (Windows, macOS by default).
+  // dir is always ledgerDir(), which ends in lower-case /ponytail/band, so the upper-case name is another path.
   const ignoreCase = await $.fs.exists(dir.toUpperCase()).catch(() => false)
   await $.fs.write(file, boardHtml(texts.flatMap(tasksFrom), await $.clock.now(), ignoreCase))
   return file
