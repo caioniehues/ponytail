@@ -872,4 +872,9 @@ test('the start-up definition search reads only the source files the band parses
   const included = DEF_PATHS.filter(p => !p.startsWith(':'))
   expect(included.every(p => isCode(`src/a${p.slice(1)}`))).toBe(true)
   expect(isCode('saved/page.html')).toBe(false)
+  // And every language the band reads is searched, or its existing definitions never count as reuse.
+  for (const ext of ['py', 'js', 'ts', 'tsx', 'go', 'rs', 'rb', 'vue', 'php', 'java', 'kt', 'swift', 'cs']) {
+    expect(isCode(`src/a.${ext}`)).toBe(true)
+    expect(included).toContain(`*.${ext}`)
+  }
 })

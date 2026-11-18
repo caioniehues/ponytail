@@ -34,6 +34,7 @@ export const GREP_DEFS = '^[[:space:]]*(export|async|def|class|function|func|pub
 // Pathspecs for that grep: only the files DEFS reads, so saved HTML and minified bundles are never scanned (#1443).
 export const DEF_PATHS = [
   '*.py', '*.js', '*.jsx', '*.ts', '*.tsx', '*.mjs', '*.cjs', '*.mts', '*.cts', '*.go', '*.rs', '*.rb',
+  '*.vue', '*.php', '*.java', '*.kt', '*.swift', '*.cs',
   ':(exclude)*.min.*', ':(exclude,glob)**/node_modules/**', ':(exclude,glob)**/vendor/**', ':(exclude,glob)**/dist/**',
 ]
 
