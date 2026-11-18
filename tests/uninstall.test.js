@@ -61,6 +61,11 @@ for (const file of sessionFiles) {
 
 const nudgeFlagPath = path.join(claudeDir, '.ponytail-statusline-nudged');
 fs.writeFileSync(nudgeFlagPath, '');
+
+// A level picked in the band and never followed by a prompt stays in ponytail-pending/.
+const pendingDir = path.join(claudeDir, 'ponytail-pending');
+fs.mkdirSync(pendingDir);
+fs.writeFileSync(path.join(pendingDir, 's1'), 'ultra');
 const bandFlagPath = path.join(claudeDir, '.ponytail-band');
 fs.writeFileSync(bandFlagPath, 'off');
 
@@ -112,6 +117,7 @@ assert.equal(fs.existsSync(qoderModeFlagPath), false, 'Qoder per-project mode fl
 assert.equal(fs.existsSync(opencodeFlagPath), false, 'OpenCode mode flag must be removed');
 assert.equal(fs.existsSync(qoderCustomFlagPath), true, 'default Qoder uninstall must not touch a separate custom config');
 assert.equal(fs.existsSync(nudgeFlagPath), false, 'statusline nudge flag must be removed');
+assert.equal(fs.existsSync(pendingDir), false, 'band level picks must be removed');
 for (const file of sessionFiles) assert.equal(fs.existsSync(path.dirname(file)), false, `per-session levels must be removed: ${path.dirname(file)}`);
 assert.equal(fs.existsSync(bandFlagPath), false, 'band flag must be removed');
 assert.equal(fs.existsSync(configPath), false, 'config file must be removed');

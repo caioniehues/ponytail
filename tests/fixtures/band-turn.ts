@@ -13,12 +13,18 @@ export const ran = (exitCode: number, stdout = '') => ({ value: { exitCode, stdo
 
 // A band test's session: the band flag, a transcript per session, and every command and write the band makes.
 // ledger: the ledger folder exists already. title: the session's sidebar name in its transcript.
-// held: the definitions grep answers only once this settles.
-export function bandSession(on: On, state: { hidden: boolean; usd: number; calls?: string; defs?: string; ledger?: boolean; title?: string; held?: Promise<unknown> }) {
+// held: the definitions grep answers only once this settles. files: files the band reads, and its writes land there too.
+export function bandSession(
+  on: On,
+  state: { hidden: boolean; usd: number; calls?: string; defs?: string; ledger?: boolean; title?: string; held?: Promise<unknown>; files?: Map<string, string> },
+) {
   let session = 's1'
   const transcript = () => `/home/u/.claude/projects/-repo/${session}.jsonl`
   on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
-  on('fs.read', ($, e) => (e.path.replaceAll('\\', '/').endsWith('/home/u/.claude/.ponytail-band') && state.hidden ? { value: 'off' } : { deny: 'missing' }) as never)
+  on('fs.read', ($, e) => {
+    if (state.files?.has(e.path)) return { value: state.files.get(e.path) } as never
+    return (e.path.replaceAll('\\', '/').endsWith('/home/u/.claude/.ponytail-band') && state.hidden ? { value: 'off' } : { deny: 'missing' }) as never
+  })
   on('session.repo', () => ({ value: { root: '/repo' } }) as never)
   on('session.root', () => ({ value: '-repo' }))
   on('session.id', () => ({ value: session }))
@@ -29,6 +35,7 @@ export function bandSession(on: On, state: { hidden: boolean; usd: number; calls
   const writes: { path: string; text: string }[] = []
   on('fs.write', ($, e) => {
     writes.push({ path: e.path.replace(/\\/g, '/'), text: e.text })
+    state.files?.set(e.path, e.text)
     return { value: undefined }
   })
   // The fixture's tool calls: an Edit that removes `legacy`, so a shown turn searches for its callers.
@@ -42,14 +49,17 @@ export function bandSession(on: On, state: { hidden: boolean; usd: number; calls
     await state.held
     return (state.defs !== undefined ? ran(0, state.defs) : ran(1)) as never
   })
-  on('command.run', () => {
+  const commands: string[] = []
+  on('command.run', ($, e) => {
+    commands.push(`/${e.command} ${e.args}`.trim())
     session = 's2'
     return { text: '' }
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('turn.start', () => ({ turnId: 't1' }))
   on('turn.complete', () => ({ text: '' }))
   const searches = () => runs.filter(argv => argv[0] === 'git' || argv[0] === 'grep')
-  return { runs, searches, writes }
+  return { runs, searches, writes, commands }
 }
 
 // A field of the last ledger row a turn wrote.

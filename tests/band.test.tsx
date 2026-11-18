@@ -28,6 +28,7 @@ import {
   mainModel,
   markdown,
   metricsSvg,
+  pendingChipSvg,
   parseDefs,
   percent,
   resume,
@@ -155,6 +156,13 @@ describe('board', () => {
 })
 
 describe('metrics', () => {
+  test('the pick chip escapes its tooltip and drops its label when narrow', () => {
+    expect(pendingChipSvg('<b>&', true).source).toContain('<title>&lt;b&gt;&amp;</title>')
+    expect(pendingChipSvg('x', false).source).not.toContain('<text')
+    expect(pendingChipSvg('x', false)).toMatchObject({ width: 22, height: 22 })
+    expect(pendingChipSvg('x', true)).toMatchObject({ width: 104, height: 22 })
+  })
+
   test('adds up tokens and prints them short', () => {
     const t = addTokens(addTokens(NO_TOKENS, { input_tokens: 10, output_tokens: 90, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0 }), { input_tokens: 0, output_tokens: 10, cache_read_input_tokens: 140, cache_creation_input_tokens: 0 })
     expect(totalTokens(t)).toBe(1250)
@@ -163,7 +171,7 @@ describe('metrics', () => {
   })
 
   const BASE: Band = {
-    level: 'full', model: 'claude-opus-5-5', cost: 31.9, spent: 3.1, turns: 6, turnCosts: [0.42], tokens: { input: 5000, output: 85_000, cacheRead: 1_100_000, cacheWrite: 10_000 },
+    level: 'full', pending: '', model: 'claude-opus-5-5', cost: 31.9, spent: 3.1, turns: 6, turnCosts: [0.42], tokens: { input: 5000, output: 85_000, cacheRead: 1_100_000, cacheWrite: 10_000 },
     busyMs: 1_560_000, name: 'Fix the cart | totals, again', project: 'shop', session: '4c69e3db-57a0', transcript: '', reused: ['to_cents'], created: [],
     removed: [], openCallers: [], tests: { state: 'pass', passed: 14 }, details: false,
   }
@@ -1062,13 +1070,89 @@ test('review and audit run the same commands a person types', async ($, on) => {
   await ui.press({ key: 'level' })
   expect(await ui.find({ key: 'level-ultra' })).toBeDefined()
   expect(sent).toEqual([])
-  await ui.press({ key: 'level-lite' })
-  expect(sent).toEqual(['/ponytail:ponytail lite'])
-  sent.length = 0
   await ui.press({ key: 'review' })
   await ui.press({ key: 'audit' })
   expect(sent).toEqual(['/ponytail:ponytail-review', '/ponytail:ponytail-audit'])
   await ui.unmount()
+})
+
+test('a level pick starts no turn, the last pick wins, and it shows as pending until the next prompt applies it (dietrichgebert/ponytail#1338)', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const flag = '/home/u/.claude/.ponytail-active'
+  const files = new Map<string, string>([[flag, 'full']])
+  const { commands: sent } = bandSession(on, { hidden: false, usd: 0.5, files })
+  const pending = '/home/u/.claude/ponytail-pending/s1'
+  const waiting = () => ui.find({ type: 'Text', text: '◷' })
+  const primary = async (level: string) => (await ui.find({ key: `level-${level}` }))?.props.variant
+  const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'terminal', ...BAND })
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  await ui.press({ key: 'level' })
+
+  // off, then ultra, while a turn runs: no command, and only ultra waits.
+  await ui.press({ key: 'level-off' })
+  await ui.press({ key: 'level-ultra' })
+  expect(sent).toEqual([])
+  expect(files.get(pending)).toBe('ultra')
+  expect(await primary('ultra')).toBe('primary')
+  expect(await waiting()).toBeDefined()
+  // Compact, the pill shows the level in force and the one waiting.
+  await ui.press({ key: 'details' })
+  expect((await ui.find({ key: 'level' }))?.props.label).toBe('full → ultra')
+  await ui.press({ key: 'level' })
+
+  // Picking the level in force takes the pick back.
+  await ui.press({ key: 'level-full' })
+  expect(files.get(pending)).toBe('')
+  expect(await waiting()).toBeUndefined()
+
+  // The next turn shows what the tracker left on disk, a slash command's turn too (the tracker deletes the file).
+  await ui.press({ key: 'level-lite' })
+  files.set(flag, 'lite')
+  files.delete(pending)
+  await $.turn.start({ text: '/shop:checkout', turnId: 't1' } as never)
+  expect(await waiting()).toBeUndefined()
+  expect(await primary('lite')).toBe('primary')
+
+  // A subagent's turn reads nothing; a typed /ponytail switch wins over the pick, which the tracker drops.
+  await ui.press({ key: 'level-ultra' })
+  await $.turn.start({ text: 'look around', turnId: 't2', agentId: 'a1' } as never)
+  await $.turn.complete({ answer: '', durationMs: 1000, agentId: 'a1' } as never)
+  expect(await waiting()).toBeDefined()
+  files.set(flag, 'full')
+  files.delete(pending)
+  await $.turn.start({ text: '/ponytail full', turnId: 't3' } as never)
+  expect(await waiting()).toBeUndefined()
+  expect(await primary('full')).toBe('primary')
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+  expect(await primary('full')).toBe('primary')
+  expect(sent).toEqual([])
+  await ui.unmount()
+})
+
+test('a waiting pick is a clock chip, labelled where the row has room, with the full hint as its tooltip', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('session.id', () => ({ value: 's1' }))
+  on('fs.write', () => ({ value: undefined }))
+  for (const [bodyColumns, labelled] of [[100, true], [60, false]] as const) {
+    const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'desktop', ...BAND, props: { ...BAND.props, bodyColumns } })
+    await ui.press({ key: 'details' })
+    await ui.press({ key: 'level-ultra' })
+    // The chip is the first Svg in the band, ahead of the metrics line.
+    const chip = (await ui.find({ type: 'Svg' }))?.props
+    expect(chip?.alt).toBe('ultra applies with your next message')
+    expect(chip?.isInteractive).toBe(true)
+    // Without a size the interactive frame fills its slot: a chip as tall as the band.
+    expect([chip?.width, chip?.height]).toEqual([labelled ? 104 : 22, 22])
+    expect(chip?.source).toContain('<title>ultra applies with your next message</title>')
+    expect(String(chip?.source).includes('next message</text>')).toBe(labelled)
+    await ui.press({ key: 'level-off' })
+    expect((await ui.find({ type: 'Svg' }))?.props.alt).not.toContain('next message')
+    await ui.press({ key: 'details' })
+    await ui.unmount()
+  }
 })
 
 test('the first prompt keeps a whole emoji at the task-name limit', async ($, on) => {

@@ -3,7 +3,7 @@ const path = require('path');
 const os = require('os');
 const { createHash } = require('crypto');
 const { pruneStale } = require('./ponytail-prune');
-const { getClaudeDir, getQoderDir, isShellSafe } = require('./ponytail-config');
+const { getClaudeDir, getQoderDir, isShellSafe, normalizeMode } = require('./ponytail-config');
 
 const STATE_FILE = '.ponytail-active';
 
@@ -115,6 +115,21 @@ function readMode() {
   return null;
 }
 
+// A level picked in the band (hooks/band) waits in ponytail-pending/<session id> until
+// the session's next prompt. Reading it consumes it; empty means the pick was taken back.
+// The file is named by the raw id, not hashed as bindSession does, because the band has no
+// sha256 to name it with; an id that could leave the folder is refused instead.
+function takePendingMode(sessionId) {
+  if (!/^[\w-]+$/.test(String(sessionId || ''))) return null;
+  const file = path.join(stateDir, 'ponytail-pending', sessionId);
+  let mode = null;
+  try {
+    mode = fs.readFileSync(file, 'utf8');
+    fs.unlinkSync(file);
+  } catch (e) {}
+  return normalizeMode(mode);
+}
+
 // Cursor's always-on project rule (.cursor/rules/ponytail.mdc) already puts the
 // ruleset in front of every prompt and no hook can switch a rule off, so while
 // it is in the workspace the hooks step back instead of injecting a second,
@@ -221,5 +236,6 @@ module.exports = {
   pruneSessions,
   readMode,
   setMode,
+  takePendingMode,
   writeHookOutput,
 };

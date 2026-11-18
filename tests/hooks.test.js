@@ -1115,4 +1115,55 @@ for (const [label, extra] of [
     `${label}: the first session keeps its level across compaction`);
 }
 
+// A level picked in the band waits in ponytail-pending/<session id> and applies with that
+// session's next prompt, with the level's ruleset (no skill body loads); a typed switch wins.
+// The pick sets only its own session's level: another session in the same repo keeps its own.
+{
+  const bandHome = path.join(temp, 'band-pick-home');
+  const env = { HOME: bandHome, USERPROFILE: bandHome, PONYTAIL_DEFAULT_MODE: 'off', CLAUDE_PROJECT_DIR: '/work/band-repo' };
+  const hook = (script, session, payload) => run(script, env, JSON.stringify({ session_id: session, ...payload }));
+  const prompt = (text, session = 'A') => hook('ponytail-mode-tracker.js', session, { prompt: text });
+  const level = (session) => (hook('ponytail-subagent.js', session, { agent_type: 'general' }).stdout.match(/level: (\w+)/) || [])[1] || 'off';
+  const pending = path.join(bandHome, '.claude', 'ponytail-pending', 'A');
+  const pick = (mode) => {
+    fs.mkdirSync(path.dirname(pending), { recursive: true });
+    fs.writeFileSync(pending, mode);
+  };
+
+  hook('ponytail-activate.js', 'A', { source: 'startup' });
+  hook('ponytail-activate.js', 'B', { source: 'startup' });
+  prompt('/ponytail full');
+  prompt('/ponytail lite', 'B');
+
+  pick('ultra');
+  let result = prompt('fix the cart totals');
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(level('A'), 'ultra');
+  assert.equal(level('B'), 'lite', 'a pick in one session leaves another alone');
+  assert.equal(fs.existsSync(pending), false, 'the pick is consumed');
+  assert.match(result.stdout, /PONYTAIL MODE CHANGED — level: ultra \(picked in the band/);
+  assert.ok(result.stdout.endsWith(getPonytailInstructions('ultra')));
+  // Consumed: the prompt after it says nothing.
+  assert.equal(prompt('and the tax').stdout, '');
+
+  pick('off');
+  assert.match(prompt('one more thing').stdout, /PONYTAIL MODE OFF \(picked in the band/);
+  assert.equal(level('A'), 'off');
+  assert.equal(level('B'), 'lite');
+
+  // A pick taken back (empty file), another session's pick, or a hostile id change nothing.
+  pick('');
+  assert.equal(prompt('hello').stdout, '');
+  pick('lite');
+  assert.equal(prompt('hello', 'B').stdout, '');
+  assert.equal(prompt('hello', '../A').stdout, '');
+  assert.equal(fs.readFileSync(pending, 'utf8'), 'lite');
+
+  // A switch typed in the prompt wins, and the pick is dropped.
+  result = prompt('/ponytail full');
+  assert.equal(level('A'), 'full');
+  assert.doesNotMatch(result.stdout, /picked in the band/);
+  assert.equal(fs.existsSync(pending), false);
+}
+
 console.log('hook compatibility checks passed');
