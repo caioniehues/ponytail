@@ -1,47 +1,34 @@
-# Handoff: ponytail fork, after the second session
+# Handoff: ponytail fork
 
-Repo: /home/milena/Projects/ponytail. A fork (`origin` = caioniehues/ponytail) of `upstream` = DietrichGebert/ponytail.
-You have READ access upstream; issues and labels are tracked on the fork (see `docs/agents/issue-tracker.md`). `CLAUDE.local.md`, `docs/agents/` and this file are no longer in `.git/info/exclude`: untracked until you commit them. What stays true between sessions (checks, the PR flow, gotchas) is in `docs/agents/fork-workflow.md`; this file is state and open work.
+Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) of `upstream` = DietrichGebert/ponytail (read access only). Issues live on the fork (`docs/agents/issue-tracker.md`). What stays true between sessions (checks, picking PRs, per-session ports, benchmarks, gotchas) is in `docs/agents/fork-workflow.md`; this file is state, decisions and open work.
 
 ## Where things stand
 
-- `main` = `14cac50`, pushed, CI green (band suite 54/54 on Claude Code 2.1.327 and `@latest`). It is upstream `96608e0` (v5.3.3) plus cherry-picked upstream PRs and local fixes: `git log --oneline 96608e0..main`. Original authors are kept on cherry-picks; ported PRs carry a `Co-authored-by` trailer.
-- Only `main` exists, locally and on origin; the merged batch branches are deleted. Local refs `pr-<n>` are fetched upstream PR heads (`git fetch upstream pull/<n>/head:pr-<n>`).
-- What landed, by theme (upstream PR numbers):
-  - First session: Code Mode #1449 (band reads tests and reuse from the transcript; no `tool.call` hook). Band fixes #1438 #1417 #1446; CI band suite #1354. Privacy/security #1407 #1408 #1320 #1249 #1409. Windows #1346 #1363 #1222 (its `isSource` part) #1442 #1377 #1386. Per-session level #1450 + #1321, with local commits 56ca145 f7946f4 2cf2db2 51f7582.
-  - Second session, local fixes:
-    - `301e179` band layout tests: from Claude Code 2.1.321 the harness's `next(e)` resolves to the engine's own AbovePrompt (`{type:'engine'}`) instead of rejecting, so the band stacks itself in a column Box and `find({type:'Box'})` hit that wrapper. Root Boxes now carry `key="band"`. `03acfa3` moves CI to 2.1.327.
-    - `9f39d11` removed-definition callers: one `git grep` with an `-e` per name instead of one per name.
-    - `e2d65f7` `ponytail-sessions/` pruned: files idle 30 days go at a fresh SessionStart (never compact/resume) and when the OpenCode plugin loads (V2 `setup`, V1 `server`). Helper `hooks/ponytail-prune.js`.
-    - `fadc8e7` comment: the `writeBoard` upper-case probe can't misfire (`dir` is always `ledgerDir()`, ending in lower-case `/ponytail/band`).
-  - Second session, test-run batch `e0955ca..1dcb607`: #1397 (runner must be the command; by design `sudo npm test` and `npx --yes vitest` no longer count), #1336 (squashed; jest/vitest count tests, not suites), #1441 (Vue), #1351 (PHP/JVM; its package-lock dropped), `4b44d88` (new languages added to `DEF_PATHS`, test checks both directions), #1414 (PowerShell) and #1227 (Swift/Xcode MCP; plus `test-without-building`) ported from the `tool.call` hook to `toolsSummary`.
-- Left out on purpose: #1235 and #1210 (same fix as #1217 plus a parseLedger and status warnings for rows only a hand edit makes), #1347 (#1402 fixes the same /clear cost and the $0 after a reload, in fewer lines), #1163 (breaks `clawhub` on Windows), #1322 (dup of #1407), duplicate `base()` PRs #1355 #1204 #1203 #1192 #1179, other per-session/Codex mode PRs #1366 #1175 #1174 #1331 #1325.
-- Measured and left: the three transcript greps per turn (#1401) cost about 45 ms on a 12 MB transcript (4.6 + 16.1 + 7.4 ms grep, 19 ms parse). A saved byte offset isn't worth its state handling yet; the `shortcut:` notes in `register.tsx` record it.
+- `main` is pushed and CI green. It is upstream `96608e0` (v5.3.3) plus picked upstream PRs and fork fixes: `git log --oneline 96608e0..main` is the history, each pick citing `dietrichgebert/ponytail#<n>`.
+- All upstream batches in the plan are integrated: band fixes, privacy, Windows, per-session levels, test-run counting, uninstall and config, codebase map, hosts, ledger, rules and skills.
+- `npm run check` is green locally: rule copies, versions, `check:plugin`, `npm test`, band suite on Claude Code 2.1.327. `engine-latest.yml` runs the band checks on the newest Claude Code each Monday.
 
-## Test baseline on main
+## Decisions git does not record
 
-- `npm run check` is fully green: rule copies, versions, `check:plugin`, `npm test` 159/159 (pandas is now installed locally), band suite 55/55 on 2.1.327. Details in `docs/agents/fork-workflow.md`.
-
-## Third session: the retro's environment fixes (`f9f7d99..14cac50`, pushed)
-
-- `scripts/check-plugin.js` + `npm run check:plugin` / `npm run check`; a `check:plugin` step in `test.yml`. `claude plugin validate` type-checks the band against the engine's types but exits 0 on its warnings; this fails on them. A planted duplicate import fails it.
-- The 24 type errors it found are fixed: `mainModel` under `noUncheckedIndexedAccess`; in `tests/band.test.tsx`, the `isCollapsed` prop 2.1.327 added to AbovePrompt, `isStdoutTruncated`/`isStderrTruncated` on mocked `process.run` results, a `typed()` helper for full `command.run` input, `removeTwo` typed as `(Engine, On)`.
-- `.github/workflows/engine-latest.yml`: band checks on `@latest` every Monday and on demand; its first run (dispatched) passed, and the workflow is active.
-- Editor types laid locally (`.claude-plugin/types/`, root `tsconfig.json`, both gitignored): the "Cannot find module 'claude-code'" diagnostics are gone.
-- CI green on `14cac50`: `check:plugin` clean, band 54/54, on 2.1.327 and on `@latest`.
+- Left out on purpose:
+  - #1163 (breaks `clawhub` on Windows); #1322 (dup of #1407); duplicate `base()` PRs #1355 #1204 #1203 #1192 #1179; other per-session/Codex mode PRs #1366 #1175 #1174 #1331 #1325.
+  - #1235 and #1210: the same fix as #1217 plus a ledger parser and status warnings for rows only a hand edit makes. #1347: #1402 fixes the same /clear cost and the $0 after a reload, in fewer lines.
+  - #1423 (fix a wrong value where it is made): benchmarked here, no measurable effect. Opus, 6 runs per arm: trace-amount fixed at the parser 6/6 in every arm, baseline included; todo-null correct and safe 6/6 in every arm (median LOC 81.5 main, 77.5 with #1423); $3.88. It waits for the task in fork issue #1.
+  - #1335 (end-of-reply note only when it matters): its own numbers are mixed, auth-token expiry named 6/6 on main, 4/6 with it. #1388 (ladder before planning): benchmarked in Codex with GPT, not this harness, and adds 8 always-loaded lines. #1383: the larger alternative to #1360.
+  - Spam: #1405 (crypto token), #1436, #1415, #1429, #1406, #1430, #1411.
+- #1360 landed without a 3-arm benchmark, by the user's call; #1193 brought its own.
+- In `skills/ponytail-review/SKILL.md`, #1193 sends a case the reviewer could not show to `Not checked:` and #1360 marks an unchecked deletion `unverified`. Both bullets stand as upstream wrote them; unify them only with a benchmark.
+- Measured and left: the three transcript greps per turn (#1401) cost about 45 ms on a 12 MB transcript. A saved byte offset isn't worth its state handling yet; the `shortcut:` notes in `register.tsx` record it.
 
 ## Open work, in priority order
 
-1. **Upstream batches are done.** Rules and skills (fourth session): #1193 (with its benchmark tasks review-base and review-probe) and #1360 landed without new runs: #1193 brings a 3-arm Opus benchmark, #1360 was the user's call. #1423 was benchmarked here and left out: Opus, 6 runs per arm, trace-amount 6/6 fixed at the parser in every arm including baseline (the task cannot show the rule), todo-null 6/6 correct and safe in every arm (LOC 81.5 main, 77.5 with #1423); $3.88 for 36 runs. It needs a task where a constructor or parser makes the wrong value across files before it can show anything. #1335 (mixed numbers: auth-token expiry named 6/6 to 4/6) and #1388 (benchmarked in Codex with GPT, 8 more always-loaded lines) are not taken. #1383 is the larger alternative to #1360. Note: #1193 sends an unshown case to `Not checked:`, #1360 marks an unchecked deletion `unverified`; both bullets sit side by side in `skills/ponytail-review/SKILL.md`.
-2. **Remaining upstream batches, not yet reviewed:**
-   - Spam to ignore: #1405 (crypto token), #1436, #1415, #1429, #1406, #1430, #1411.
-3. **Unverified, needs live hosts:** do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
-4. **Smells (judgement calls):** folder-name logic duplicated (`base` in register.tsx, `tasksFrom` in board.ts), and the grep-or-read fallback (`readTitle`/`readModel`/`readTools`); `package-lock.json` locks no dependencies; `band-webhook-names.test.js` and `band-import.test.js` assert on source text.
-5. **Design: split the band into its own plugin.** The real fix behind upstream #1433, #1310 and #1356; #1449 traded accuracy for Code Mode (`Write` overwrites count every definition as new; no transcript means no Tests/reuse; subagent tool calls aren't counted).
+1. **Design: split the band into its own plugin.** The real fix behind upstream #1433, #1310 and #1356; #1449 traded accuracy for Code Mode (`Write` overwrites count every definition as new; no transcript means no tests or reuse; subagent tool calls aren't counted).
+2. **Unverified, needs live hosts:** do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
+3. **Smells (judgement calls):** folder-name logic duplicated (`base` in register.tsx, `tasksFrom` in board.ts); the grep-or-read fallback (`readTitle`/`readModel`/`readTools`); `package-lock.json` locks no dependencies; `band-webhook-names.test.js` and `band-import.test.js` assert on source text. Some may go with item 1.
+4. **Benchmark task** for owner-anchored fixes: fork issue #1.
 
 ## Suggested skills
 
-- `mattpocock-skills:code-review` with fixed point `51f7582` over this session's work, or after the next batch. Its spec lives upstream, so point the Spec reviewer at DietrichGebert/ponytail PRs.
-- `mattpocock-skills:tdd` for porting PRs and anything in item 4.
-- `mattpocock-skills:grill-with-docs` for item 5, then `to-spec` / `to-tickets` if it's multi-session.
+- `mattpocock-skills:grill-with-docs` for item 1, then `to-spec` / `to-tickets` if it's multi-session.
+- `mattpocock-skills:improve-codebase-architecture` and `mattpocock-skills:tdd` for item 3.
 - `mattpocock-skills:triage` if you mirror upstream issues into the fork's tracker.
