@@ -133,7 +133,7 @@ if (fs.existsSync('/bin/sh')) {
   // back into a POSIX path, so both shapes must load the script (#646).
   const roots = [root, root.split(path.sep).join('\\')];
 
-  for (const command of ['hooks/claude-codex-hooks.json', 'hooks/claude-hooks.json'].flatMap(file => collectManifestCommands(file, 'command'))) {
+  for (const command of collectManifestCommands('hooks/claude-codex-hooks.json', 'command')) {
     for (const pluginRoot of roots) {
       result = runShell(command, { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PLUGIN_ROOT: pluginRoot });
       assert.equal(result.status, 0, result.stderr);

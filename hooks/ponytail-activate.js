@@ -187,13 +187,12 @@ function activate(mode, source) {
 
 // Compaction and resume re-run SessionStart inside the same conversation, keeping the
 // live level (or stays off after "stop ponytail") instead of resetting to the
-// default. Claude Code and Codex pass the trigger as `source` on stdin; reading
-// it there keeps the hook entry, and the trust Codex gave it, unchanged.
-// A fork (--fork-session, /fork, /branch) goes on with a copy of the conversation
-// under a new id. Claude Code starts it with source "fork", from hooks/claude-hooks.json
-// (Codex hashes the matcher into its trust, so the shared file keeps its own). The fork
-// takes the level readMode finds and keeps it as its own, so later switches in other
-// sessions no longer reach it (fork #15).
+// default. Claude Code and Codex pass the trigger as `source` on stdin.
+// The hook entry has no matcher, so every source reaches it, sources Claude Code adds
+// later included: only a startup, a /clear or a missing payload starts at the default,
+// and anything else goes on at the level readMode finds. A fork (--fork-session, /fork,
+// /branch: source "fork") goes on with a copy of the conversation under a new id: it
+// keeps that level as its own, so later switches in other sessions no longer reach it (fork #15).
 // shortcut: a fork has no file yet, so it starts at the repo's last switch, which is its parent's level unless another
 // session in the repo switched since, read the parent's level once Claude Code passes the parent id (2.1.327 passes
 // none, and writes the fork's transcript only after its first prompt).
@@ -212,10 +211,10 @@ function finish() {
   } catch (e) {
     // No payload, or an unparseable one: treat it as a fresh session
   }
-  const resumed = source === 'compact' || source === 'resume' || source === 'fork';
+  const fresh = !source || source === 'startup' || source === 'clear';
   // Only a fresh start prunes: a resume reads its own file, however old.
-  if (!resumed) pruneSessions();
-  activate(resumed ? (readMode() || 'off') : getDefaultMode(), source);
+  if (fresh) pruneSessions();
+  activate(fresh ? getDefaultMode() : (readMode() || 'off'), source);
 }
 
 process.stdin.on('data', chunk => { input += chunk; });

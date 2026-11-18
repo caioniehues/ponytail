@@ -79,7 +79,7 @@ test('a session id with no state file of its own falls back to the project level
   assert.equal(hook('ponytail-activate.js', JSON.stringify({ session_id: 'B', source: 'resume' })), '');
 });
 
-test('a forked session starts at the repo level and keeps it once another session switches (#15)', (t) => {
+test('a forked session, or one from a source ponytail does not know, keeps a level instead of following the repo (#15)', (t) => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-fork-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const env = { ...process.env, CLAUDE_CONFIG_DIR: '', PLUGIN_DATA: '', COPILOT_PLUGIN_DATA: '', CURSOR_VERSION: '', CURSOR_PROJECT_DIR: '',
@@ -89,15 +89,13 @@ test('a forked session starts at the repo level and keeps it once another sessio
     env, input: JSON.stringify({ session_id: session, ...payload }), encoding: 'utf8',
   }).stdout;
 
-  // --fork-session, /fork and /branch start SessionStart with source "fork": the hook runs only if registered for it.
-  // Codex hashes each hook's matcher into its trust, so the file it shares keeps its matcher and Claude Code gets fork
-  // from a file of its own.
-  const matchers = (manifest) => [].concat(JSON.parse(fs.readFileSync(path.join(__dirname, '..', manifest), 'utf8')).hooks)
-    .flatMap(file => JSON.parse(fs.readFileSync(path.join(__dirname, '..', file), 'utf8')).hooks.SessionStart ?? [])
-    .map(entry => entry.matcher)
-  const fires = (manifest, source) => matchers(manifest).some(m => new RegExp(`^(${m})$`).test(source))
-  assert.ok(fires('.claude-plugin/plugin.json', 'fork'), 'Claude Code runs the SessionStart hook for a fork');
-  assert.deepEqual(matchers('.codex-plugin/plugin.json'), ['startup|resume|clear|compact'], 'a changed matcher makes Codex ask for trust again');
+  // Claude Code starts --fork-session, /fork and /branch with source "fork", and adds sources over time. With no
+  // matcher every source reaches the hook, which keeps the session's level for anything but a fresh start.
+  const entries = (manifest) => [].concat(JSON.parse(fs.readFileSync(path.join(__dirname, '..', manifest), 'utf8')).hooks)
+    .flatMap(file => JSON.parse(fs.readFileSync(path.join(__dirname, '..', file), 'utf8')).hooks.SessionStart ?? []);
+  for (const manifest of ['.claude-plugin/plugin.json', '.codex-plugin/plugin.json']) {
+    assert.deepEqual(entries(manifest).map(entry => entry.matcher), [undefined], `${manifest}: one SessionStart entry, with no matcher`);
+  }
 
   hook('ponytail-activate.js', 'A', { source: 'startup' });
   hook('ponytail-mode-tracker.js', 'A', { prompt: '/ponytail ultra' });
@@ -106,6 +104,8 @@ test('a forked session starts at the repo level and keeps it once another sessio
   // Another session in the repo switches afterwards; the fork's compaction keeps the fork's own level.
   hook('ponytail-activate.js', 'B', { source: 'startup' });
   hook('ponytail-mode-tracker.js', 'B', { prompt: '/ponytail lite' });
+  // A source ponytail does not know yet goes on at the level readMode finds (B's lite here), not the default (full).
+  assert.match(context(hook('ponytail-activate.js', 'G', { source: 'teleport' })), /^PONYTAIL MODE ACTIVE — level: lite\n/);
   assert.match(context(hook('ponytail-activate.js', 'F', { source: 'compact' })), /^PONYTAIL MODE ACTIVE — level: ultra\n/);
 });
 
