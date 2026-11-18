@@ -5,7 +5,7 @@ You have READ access upstream; issues and labels are tracked on the fork (see `d
 
 ## Where things stand
 
-- `main` = `1dcb607`, pushed, CI green (band suite 54/54 on Claude Code 2.1.327). It is upstream `96608e0` (v5.3.3) plus cherry-picked upstream PRs and local fixes: `git log --oneline 96608e0..main`. Original authors are kept on cherry-picks; ported PRs carry a `Co-authored-by` trailer.
+- `main` = `14cac50`, pushed, CI green (band suite 54/54 on Claude Code 2.1.327 and `@latest`). It is upstream `96608e0` (v5.3.3) plus cherry-picked upstream PRs and local fixes: `git log --oneline 96608e0..main`. Original authors are kept on cherry-picks; ported PRs carry a `Co-authored-by` trailer.
 - Only `main` exists, locally and on origin; the merged batch branches are deleted. Local refs `pr-<n>` are fetched upstream PR heads (`git fetch upstream pull/<n>/head:pr-<n>`).
 - What landed, by theme (upstream PR numbers):
   - First session: Code Mode #1449 (band reads tests and reuse from the transcript; no `tool.call` hook). Band fixes #1438 #1417 #1446; CI band suite #1354. Privacy/security #1407 #1408 #1320 #1249 #1409. Windows #1346 #1363 #1222 (its `isSource` part) #1442 #1377 #1386. Per-session level #1450 + #1321, with local commits 56ca145 f7946f4 2cf2db2 51f7582.
@@ -22,13 +22,13 @@ You have READ access upstream; issues and labels are tracked on the fork (see `d
 
 - `npm run check` is fully green: rule copies, versions, `check:plugin`, `npm test` 159/159 (pandas is now installed locally), band suite 54/54 on 2.1.327. Details in `docs/agents/fork-workflow.md`.
 
-## Uncommitted: the retro's environment fixes (third session)
+## Third session: the retro's environment fixes (`f9f7d99..14cac50`, pushed)
 
 - `scripts/check-plugin.js` + `npm run check:plugin` / `npm run check`; a `check:plugin` step in `test.yml`. `claude plugin validate` type-checks the band against the engine's types but exits 0 on its warnings; this fails on them. A planted duplicate import fails it.
 - The 24 type errors it found are fixed: `mainModel` under `noUncheckedIndexedAccess`; in `tests/band.test.tsx`, the `isCollapsed` prop 2.1.327 added to AbovePrompt, `isStdoutTruncated`/`isStderrTruncated` on mocked `process.run` results, a `typed()` helper for full `command.run` input, `removeTwo` typed as `(Engine, On)`.
-- `.github/workflows/engine-latest.yml`: band checks on `@latest` every Monday and on demand. GitHub disables scheduled workflows in forks until they're enabled under Actions.
+- `.github/workflows/engine-latest.yml`: band checks on `@latest` every Monday and on demand; its first run (dispatched) passed, and the workflow is active.
 - Editor types laid locally (`.claude-plugin/types/`, root `tsconfig.json`, both gitignored): the "Cannot find module 'claude-code'" diagnostics are gone.
-- Not yet pushed: CI hasn't run `check:plugin` or the new workflow.
+- CI green on `14cac50`: `check:plugin` clean, band 54/54, on 2.1.327 and on `@latest`.
 
 ## Open work, in priority order
 
