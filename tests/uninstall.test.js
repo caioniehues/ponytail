@@ -50,6 +50,15 @@ const opencodeFlagPath = path.join(temp, 'config-home', 'opencode', '.ponytail-a
 fs.mkdirSync(path.dirname(opencodeFlagPath), { recursive: true });
 fs.writeFileSync(opencodeFlagPath, 'off');
 
+// Per-session levels: each host keeps one file per session under ponytail-sessions/
+// beside its flag (hooks/ponytail-runtime.js, .opencode/plugins/ponytail.mjs).
+const sessionFiles = [claudeDir, path.join(home, '.qoder'), path.join(home, '.cursor'), path.join(home, '.codebuddy'), path.join(temp, 'config-home', 'opencode')]
+  .map((dir) => path.join(dir, 'ponytail-sessions', 's1'));
+for (const file of sessionFiles) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, 'ultra');
+}
+
 const nudgeFlagPath = path.join(claudeDir, '.ponytail-statusline-nudged');
 fs.writeFileSync(nudgeFlagPath, '');
 const bandFlagPath = path.join(claudeDir, '.ponytail-band');
@@ -103,6 +112,7 @@ assert.equal(fs.existsSync(qoderModeFlagPath), false, 'Qoder per-project mode fl
 assert.equal(fs.existsSync(opencodeFlagPath), false, 'OpenCode mode flag must be removed');
 assert.equal(fs.existsSync(qoderCustomFlagPath), true, 'default Qoder uninstall must not touch a separate custom config');
 assert.equal(fs.existsSync(nudgeFlagPath), false, 'statusline nudge flag must be removed');
+for (const file of sessionFiles) assert.equal(fs.existsSync(path.dirname(file)), false, `per-session levels must be removed: ${path.dirname(file)}`);
 assert.equal(fs.existsSync(bandFlagPath), false, 'band flag must be removed');
 assert.equal(fs.existsSync(configPath), false, 'config file must be removed');
 assert.equal(fs.existsSync(cursorFlagPath), false, 'Cursor mode flag must be removed');

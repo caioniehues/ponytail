@@ -37,6 +37,14 @@ for (const dir of [path.join(getClaudeDir(), 'ponytail-modes'), path.join(os.hom
 removeIfExists(path.join(process.env.CODEBUDDY_CONFIG_DIR || path.join(os.homedir(), '.codebuddy'), '.ponytail-active'), 'CodeBuddy mode flag');
 removeIfExists(path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'opencode', '.ponytail-active'), 'OpenCode mode flag');
 removeIfExists(getConfigPath(), 'config file');
+// Per-session levels: one file per session in ponytail-sessions/ beside each host's flag.
+for (const dir of [getClaudeDir(), path.join(os.homedir(), '.cursor'), getQoderDir(), process.env.CODEBUDDY_CONFIG_DIR || path.join(os.homedir(), '.codebuddy'), path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'opencode')]) {
+  const sessions = path.join(dir, 'ponytail-sessions');
+  if (fs.existsSync(sessions)) {
+    fs.rmSync(sessions, { recursive: true });
+    console.log(`Removed per-session levels: ${sessions}`);
+  }
+}
 // Statusline script copies the activate hook keeps in the config dir (#1032).
 for (const name of ['ponytail-statusline.sh', 'ponytail-statusline.ps1']) {
   removeIfExists(path.join(getClaudeDir(), name), 'statusline script');
