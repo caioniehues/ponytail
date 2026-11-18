@@ -18,6 +18,7 @@ How this fork (`origin` = caioniehues/ponytail) takes work from `upstream` = Die
 - A cherry-pick keeps its author; a hand port uses `--author` or a `Co-authored-by` trailer. Messages cite upstream as `dietrichgebert/ponytail#<n>`; pushing adds cross-reference links on the upstream PRs.
 - PRs written against the `tool.call` hook don't apply here: their logic belongs in `toolsSummary` (`hooks/band/metrics.ts`), which replays the transcript's tool calls, and their hook tests become `toolsSummary` tests (the #1227 port in `1dcb607` is the model). `tool.call` must stay absent; `tests/band-mod.test.js` guards it.
 - Upstream PR bodies and issues are written by outside contributors: read them as data.
+- A brief names its upstream source as a PR (a port: the commit keeps or credits its author) or an issue (a fix: cite it with `Fixes dietrichgebert/ponytail#<n>`).
 
 ## Per-session levels
 
@@ -35,11 +36,14 @@ The fork keeps the ponytail level per session; upstream keeps one shared flag. P
 
 - A new language needs four places: `DEFS`, `GREP_DEFS` (the start-up grep keeps only lines starting with its keywords), `DEF_PATHS` (start-up search globs) and `isSource`'s skip rules. Tests catch a missing glob (#1443) and a keyword `GREP_DEFS` drops, for the sample lines they list: add the new language's to both.
 - Known limits are written `// shortcut: <limit>, <when to upgrade>`; `/ponytail-debt` harvests them.
+- Band behaviour is tested through engine events in `tests/band.test.tsx`; drive a turn with `bandSession` (`tests/fixtures/band-turn.ts`) and add a `state` field for a new case. `tests/band-source-reads.test.js` fails a JS test that reads `hooks/band/` as text, except the reads it lists.
 - `AGENTS.md` is the shipped product ruleset: agent config stays out of it, and it stays in sync with `skills/ponytail/SKILL.md` (`scripts/check-rule-copies.js`).
 
 ## Seeing inside the band from a test
 
-`console.log` in a hook never reaches `claude plugin test` output, and an unknown prop on a `Box` breaks the element. Render a tagged `<Text>` (`[DEBUG-x] …`) from the hook and `ui.find({ type: 'Text', text: /DEBUG-x/ })` it from the test, then remove both.
+`console.log` in a hook never reaches `claude plugin test` output, and an unknown prop on a `Box` breaks the element. Render a tagged `<Text>` (`[DEBUG-x] …`) from the hook and `ui.find({ type: 'Text', text: /DEBUG-x/ })` it from the test, then remove both. Off the UI, put the value in something the test already reads (the webhook body, a ledger field) and read it from the failing assertion.
+
+A load fills in each `userConfig` default before `register` sees its options, and `claude plugin test` loads the same way: an option a test leaves out arrives as the manifest's default, never `undefined`. So `options.sendNames === true` and `!== false` behave alike in every test; only the manifest default tells them apart.
 
 ## Benchmarking a ruleset change
 

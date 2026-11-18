@@ -20,8 +20,7 @@ Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) o
 - In `skills/ponytail-review/SKILL.md`, #1193 sends a case the reviewer could not show to `Not checked:` and #1360 marks an unchecked deletion `unverified`. Both bullets stand as upstream wrote them; unify them only with a benchmark.
 - Measured and left: the three transcript greps per turn (#1401) cost about 45 ms on a 12 MB transcript. A saved byte offset isn't worth its state handling yet; the `shortcut:` notes in `register.tsx` record it.
 
-- Smells cleared 2026-11-18: one `grepOrRead` for the three transcript reads, one `base` (board.ts) for the project folder name, and the webhook-names and ledger-lock checks moved from source text to band tests. Left on purpose: `package-lock.json` (no dependencies, CI never runs `npm ci`, an upstream file) and `band-import.test.js` reading `CSV_HEADER` from `metrics.ts` (a JS test cannot import the TS, and it is the import/band column contract).
-- A load fills in a `userConfig` default before `register` sees it (the test harness too), so an unset `sendNames` arrives as `false`: `=== true` and `!== false` cannot be told apart by a test, only by dropping the manifest default.
+- `package-lock.json` stays though it locks nothing: no dependencies, CI never runs `npm ci`, and it is an upstream file.
 
 - The band split is dropped (2026-11-18). On Claude Code 2.1.327, a mod that hooks `tool.call`, the v5.3.3 band included, starts with Code Mode on, and the hook fires for every call made inside a Code Mode script (probe: a logging mod plus one Haiku prompt). So Code Mode no longer argues for the split, and you're the only user. Upstream #1433's premise is out of date from 2.1.327 on.
 
@@ -29,8 +28,6 @@ Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) o
 
 1. **Unverified, needs live hosts:** do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
 2. **Benchmark task** for owner-anchored fixes: fork issue #1. Validating it needs paid `claude -p` runs: ask first.
-
-Done 2026-11-18: fork #2 and #3 (band fixes, no split; `docs/adr/0001-band-reads-tool-calls-from-the-transcript.md` records why the band stays on the transcript).
 
 ## Suggested skills
 
