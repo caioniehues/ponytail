@@ -5,7 +5,7 @@ Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) o
 ## Where things stand
 
 - `main` is pushed and CI green. It is upstream `96608e0` (v5.3.3) plus picked upstream PRs and fork fixes: `git log --oneline 96608e0..main` is the history, each pick citing `dietrichgebert/ponytail#<n>`.
-- All upstream batches in the plan are integrated: band fixes, privacy, Windows, per-session levels, test-run counting, uninstall and config, codebase map, hosts, ledger, rules and skills, and (2026-11-18) band features and Pi: #1378 #1385 #1364 #1372 #1382 #1349 #1357 #1426 #1427 #1425, and the hand port of #1404 (fork #4: the start-up definitions grep no longer holds `session.start`).
+- All upstream batches in the plan are integrated: band fixes, privacy, Windows, per-session levels, test-run counting, uninstall and config, codebase map, hosts, ledger, rules and skills, and (2026-11-18) band features and Pi: #1378 #1385 #1364 #1372 #1382 #1349 #1357 #1426 #1427 #1425, and the hand ports of #1404 (fork #4: the start-up definitions grep no longer holds `session.start`) and #1338 (fork #5: a level pick in the band applies with the next prompt).
 - `npm run check` is green locally: rule copies, versions, `check:plugin`, `npm test`, band suite on Claude Code 2.1.327. `engine-latest.yml` runs the band checks on the newest Claude Code each Monday.
 
 ## Decisions git does not record
@@ -22,15 +22,15 @@ Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) o
 
 - #1364 runs `node --version` on each turn while the level flag file is missing, to tell "off" from "no node"; accepted, the flag is missing only before ponytail's first write.
 - #1404's port: a shown turn awaits the start-up definitions search even when it has no tool calls to count; accepted, a turn does not hold the engine's `initialize` reply.
+- #1338's port: the band still reads the shared level flag, so after another session's switch a pick of that level counts as taking the pick back (the `readLevel` shortcut). A pick is also dropped by any typed `/ponytail …` prompt, `/ponytail band` included, as upstream does.
 - `package-lock.json` stays though it locks nothing: no dependencies, CI never runs `npm ci`, and it is an upstream file.
 
 - The band split is dropped (2026-11-18). On Claude Code 2.1.327, a mod that hooks `tool.call`, the v5.3.3 band included, starts with Code Mode on, and the hook fires for every call made inside a Code Mode script (probe: a logging mod plus one Haiku prompt). So Code Mode no longer argues for the split, and you're the only user. Upstream #1433's premise is out of date from 2.1.327 on.
 
 ## Open work, in priority order
 
-1. **Hand port from the band-features batch:** fork issue #5, #1338 (a level pick applies with the next prompt; 7 commits through `ponytail-mode-tracker.js` and `ponytail-runtime.js`, so the per-session level rules above apply). Test-first. #4 (#1404) is done, so #5 is unblocked.
-2. **Unverified, needs live hosts** (fork issue #6, `ready-for-human`): do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
-3. **Benchmark task** for owner-anchored fixes: fork issue #1. Validating it needs paid `claude -p` runs: ask first.
+1. **Unverified, needs live hosts** (fork issue #6, `ready-for-human`): do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
+2. **Benchmark task** for owner-anchored fixes: fork issue #1. Validating it needs paid `claude -p` runs: ask first.
 
 ## Suggested skills
 
