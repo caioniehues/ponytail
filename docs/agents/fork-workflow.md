@@ -5,11 +5,11 @@ How this fork (`origin` = caioniehues/ponytail) takes work from `upstream` = Die
 ## Checks
 
 - `npm run check` runs everything CI runs except the benchmark selftest: rule copies, versions, `check:plugin`, `npm test`, `test:band`. Green is the baseline; a failure is yours.
-- `npm test` needs pandas (`tests/correctness.test.js` runs a pandas one-liner): `sudo pacman -S python-pandas` here, not pip (the system Python refuses it).
 - `npm run check:plugin` (`scripts/check-plugin.js`) runs `claude plugin validate` and fails on its warnings, which carry the TypeScript errors in `hooks/band/` and `tests/band.test.tsx` against the engine's own types. A warning that is fine on purpose goes in its `ACCEPTED` list with the reason.
 - Installed copies (Claude Code from the `ponytail` marketplace on this fork, pi from `git:github.com/caioniehues/ponytail`): the fork keeps upstream's version, 5.3.3, and `claude plugin update` compares versions, so it reports "already at the latest version" and keeps the old files. After a push, run `claude plugin marketplace update ponytail`, then `claude plugin uninstall ponytail@ponytail && claude plugin install ponytail@ponytail`. pi follows git: `pi update`. Sessions already open keep the hooks they started with.
+- Codex trust: Codex approves a plugin's hooks against the hook entry and a hash of every file in the plugin's folder ([`plugin_trust.rs`](https://github.com/openai/codex/blob/bcff988bd12917283be7040768bfe928f63b5ff0/codex-rs/hooks/src/engine/plugin_trust.rs) `matches_hash`), so every ponytail update asks Codex users to approve the hooks again. Editing an entry in `hooks/claude-codex-hooks.json` costs them nothing beyond that.
 - Old engines: `npx -y @anthropic-ai/claude-code@<v> plugin test`. CI pins one version in `test.yml`; `engine-latest.yml` runs the band checks on the newest release each Monday (and on demand).
-- Editor types: `.claude-plugin/types/claude-code/index.d.ts` and the root `tsconfig.json` are gitignored and local. The engine writes them when it loads the band from this folder (`claude --plugin-dir .`); otherwise copy `types/claude-code.d.ts` from the plugin-authoring skill's folder over that file after a Claude Code update. Stale types show up as diagnostics that `check:plugin` doesn't report.
+- Editor types: `.claude-plugin/types/claude-code/index.d.ts` and the root `tsconfig.json` are gitignored and local. The engine writes them when it loads the band from this folder (`claude --plugin-dir .`); otherwise copy the plugin-authoring skill's `types/claude-code.d.ts` over that file after a Claude Code update. Claude Code unpacks that skill under `/tmp/claude-<uid>/bundled-skills/<version>/<hash>/plugin-authoring/`. These are the mod engine's types: command hook payloads (SessionStart's `source` and the like) are not in them, so check those against the hooks docs. Stale types show up as diagnostics that `check:plugin` doesn't report.
 - When the editor contradicts `check:plugin` or `npx -p typescript@5 tsc -p .`, the editor is stale: restart its TypeScript server.
 
 ## Taking upstream PRs
@@ -41,6 +41,7 @@ The fork keeps the ponytail level per session; upstream keeps one shared flag. P
 
 - A new language needs four places: `DEFS`, `GREP_DEFS` (the start-up grep keeps only lines starting with its keywords), `DEF_PATHS` (start-up search globs) and `isSource`'s skip rules. Tests catch a missing glob (#1443) and a keyword `GREP_DEFS` drops, for the sample lines they list: add the new language's to both.
 - Known limits are written `// shortcut: <limit>, <when to upgrade>`; `/ponytail-debt` harvests them.
+- The band's test sandbox has no timers (`setTimeout` is not in its types). To prove a call does not wait for something held, await the call and let the test's 5 s timeout be the failure.
 - Band behaviour is tested through engine events in `tests/band.test.tsx`; drive a turn with `bandSession` (`tests/fixtures/band-turn.ts`) and add a `state` field for a new case. `tests/band-source-reads.test.js` fails a JS test that reads `hooks/band/` as text, except the reads it lists.
 - `AGENTS.md` is the shipped product ruleset: agent config stays out of it, and it stays in sync with `skills/ponytail/SKILL.md` (`scripts/check-rule-copies.js`).
 
