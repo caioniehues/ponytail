@@ -6,6 +6,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const correctness = require('../benchmarks/correctness');
+const { spawnSync } = require('node:child_process');
+
+// The csv checks run real pandas code. CI installs pandas (test.yml); a machine
+// without it skips them with the reason instead of failing.
+const pandas = process.env.CI || spawnSync('python3', ['-c', 'import pandas']).status === 0
+  ? {}
+  : { skip: 'pandas is not installed (Arch: sudo pacman -S python-pandas; elsewhere: pip install pandas)' };
 
 // Helper: wrap code in a fenced block and call the assertion with task vars.
 function check(task, lang, code) {
@@ -88,7 +95,7 @@ test('debounce: bare unfenced arrow function is still scored (#65)', () => {
 
 // --- CSV sum ---
 
-test('csv: correct pandas one-liner passes', () => {
+test('csv: correct pandas one-liner passes', pandas, () => {
   const result = check(
     "Write Python code that reads sales.csv and sums the 'amount' column.",
     'python',
