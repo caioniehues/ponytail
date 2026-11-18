@@ -707,6 +707,11 @@ test('the transcript alone says which tests ran, what an edit made and what it r
   expect(toolsSummary(scratch, '/repo', known)).toEqual({ created: [], removed: [], reused: [], tests: { state: 'none' } })
 })
 
+test('a test run through the PowerShell tool counts like one through Bash (dietrichgebert/ponytail#1414)', () => {
+  const ran = [{ name: 'PowerShell', input: { command: 'npm test' }, failed: false, text: 'ℹ pass 7' }]
+  expect(toolsSummary(ran, '/repo', new Map()).tests).toEqual({ state: 'pass', passed: 7, failed: undefined })
+})
+
 test('a turn reads the tests, reuse and stale tests out of its transcript', async ($, on) => {
   mock.clock(on)
   mock.store(on)

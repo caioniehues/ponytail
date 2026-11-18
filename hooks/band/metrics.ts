@@ -187,7 +187,8 @@ export function toolsSummary(calls: ToolCall[], root: string, known: Map<string,
   let reused: string[] = []
   let tests: Band['tests'] = { state: 'none' }
   for (const call of calls) {
-    if (call.name === 'Bash') {
+    // Windows hosts run commands through the PowerShell tool.
+    if (call.name === 'Bash' || call.name === 'PowerShell') {
       // A failing test run is the answer, not a tool that did nothing.
       if (isTestCommand(str(call.input, 'command'))) tests = { state: call.failed ? 'fail' : 'pass', ...testCounts(call.text) }
       continue
