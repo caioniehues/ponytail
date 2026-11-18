@@ -32,10 +32,9 @@ You have READ access upstream; issues and labels are tracked on the fork (see `d
 
 ## Open work, in priority order
 
-1. **Next upstream batch: hosts** (see item 2). The codebase-map batch landed in the fourth session: all 11 picked, with hand merges noted in each commit (#1243 + #1391 read the resolved file's head through `openSync`; #1273's PHP class pattern uses `[ \t]` like #1368; #1245 keeps the 40-character name cap; #1260 + #1284 parse then clamp the budget).
+1. **Next upstream batch: ledger correctness** (see item 2); it needs a choice between overlapping PRs first. The hosts batch landed in the fourth session: all 9 picked. #1420 moves Claude Code's SessionStart context to hookSpecificOutput JSON (the fork's resume tests read it from there, `c0226d5`); #1262 is ported so a typed "stop ponytail" turns off only its own OpenCode session; #1232's test and #1234's test were adapted to per-session levels and to #1281's status clear.
 2. **Remaining upstream batches, not yet reviewed:**
-   - Hosts (next): #1420 #1410 #1232 #1262 #1168 #1281 #1234 #1201 #1202.
-   - Ledger correctness: #1399 or #1328, one of #1235/#1217/#1210, #1214, #1347 or #1402.
+   - Ledger correctness (next): #1399 or #1328, one of #1235/#1217/#1210, #1214, #1347 or #1402.
    - Rules and skills (need benchmarks): #1423 #1388 #1193 #1383 #1360 #1335.
    - Spam to ignore: #1405 (crypto token), #1436, #1415, #1429, #1406, #1430, #1411.
 3. **Unverified, needs live hosts:** do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
