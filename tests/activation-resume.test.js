@@ -36,3 +36,19 @@ test('resume preserves the live mode and emits only a reminder', (t) => {
   assert.equal(resume().stdout, '', 'resume must not switch a stopped session back on');
   assert.equal(fs.existsSync(resumeFlag), false);
 });
+
+test('resume keeps its own session level when another session in the repo started off', (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-resume-session-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: '', PLUGIN_DATA: '', COPILOT_PLUGIN_DATA: '', CURSOR_VERSION: '', CURSOR_PROJECT_DIR: '',
+    CODEBUDDY_PLUGIN_ROOT: '', CODEBUDDY_CONFIG_DIR: '', PONYTAIL_MAP: '0', HOME: temp, USERPROFILE: temp, CLAUDE_PROJECT_DIR: '/work/shared-repo' };
+  const hook = (script, session, payload, mode = 'full') => spawnSync(process.execPath, [path.join(__dirname, '..', 'hooks', script)], {
+    env: { ...env, PONYTAIL_DEFAULT_MODE: mode }, input: JSON.stringify({ session_id: session, ...payload }), encoding: 'utf8',
+  }).stdout;
+
+  hook('ponytail-activate.js', 'A', { source: 'startup' });
+  hook('ponytail-mode-tracker.js', 'A', { prompt: '/ponytail ultra' });
+  hook('ponytail-activate.js', 'B', { source: 'startup' }, 'off');
+  assert.equal(hook('ponytail-activate.js', 'A', { source: 'resume' }), 'PONYTAIL MODE ACTIVE — level: ultra');
+  assert.equal(hook('ponytail-activate.js', 'B', { source: 'resume' }), '', 'the session that started off resumes off');
+});
