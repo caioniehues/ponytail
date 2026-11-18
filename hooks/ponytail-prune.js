@@ -5,10 +5,10 @@ const path = require('path');
 
 const SESSION_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 
-function pruneStale(dir, maxAgeMs = SESSION_MAX_AGE_MS) {
+function pruneStale(dir) {
   let names = [];
   try { names = fs.readdirSync(dir); } catch (e) { return; }
-  const cutoff = Date.now() - maxAgeMs;
+  const cutoff = Date.now() - SESSION_MAX_AGE_MS;
   for (const name of names) {
     const file = path.join(dir, name);
     try { if (fs.statSync(file).mtimeMs < cutoff) fs.unlinkSync(file); } catch (e) {}

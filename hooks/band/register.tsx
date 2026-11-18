@@ -294,6 +294,7 @@ export const register: Register = (on, options) => {
     const stillRemoved: string[] = []
     const open: string[] = []
     // One search for every name: a search each walked the repo once more on every turn, for every name the session removed.
+    // shortcut: one -e per removed name, so argv grows with the session's removals (Windows caps a command line at 32K chars); feed the names on stdin with -f - if a session ever removes thousands.
     const grep = removed.length === 0 ? undefined : await $.process.run(['git', 'grep', '-I', '--untracked', '-nw', ...removed.flatMap(name => ['-e', name])]).catch(() => undefined)
     // The checks below each look for one name, so a row another name found never counts for it.
     const rows = hits(grep?.stdout ?? '')
