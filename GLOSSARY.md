@@ -12,6 +12,10 @@ _Avoid_: status bar, the mod, the whole band plugin
 The space above Claude Code's prompt that every plugin draws its row into. The band is one row in it.
 _Avoid_: the band (when meaning the shared area)
 
+**Level**:
+How hard ponytail pushes for the simplest solution: off, lite, full or ultra. One per session.
+_Avoid_: mode, intensity
+
 **Task**:
 One Claude Code session, as the ledger records it.
 _Avoid_: session (when meaning the ledger's row), job
