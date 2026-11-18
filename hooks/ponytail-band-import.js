@@ -173,12 +173,12 @@ function sessionStats(records, subagentRecords = [], sessionId = '') {
   };
 }
 
-// A session's row in the band's ledger (hooks/band/ledger.ts, loaded as L). The import cannot know reuse, callers or tests.
-function sessionRow(L, sessionId, project, s) {
+// A past session's task row for the ledger module (hooks/band/ledger.ts). The import cannot know reuse, callers or tests.
+function taskRow(ledger, sessionId, project, s) {
   return {
-    key: L.taskKey(sessionId, s.startedMs), started: L.stamp(s.startedMs), project, name: s.name, cost: s.cost, turns: s.turns,
+    key: ledger.taskKey(sessionId, s.startedMs), started: ledger.stamp(s.startedMs), project, name: s.name, cost: s.cost, turns: s.turns,
     agentMs: s.agentMs, tokens: { input: s.tokens - s.output, output: s.output, cacheRead: 0, cacheWrite: 0 },
-    reuse: null, reused: 0, created: 0, callersOpen: 0, tests: '', level: 'import', model: s.model,
+    reuse: null, reused: null, created: null, callersOpen: null, tests: '', level: 'import', model: s.model,
   };
 }
 
@@ -217,27 +217,28 @@ function loadBand(name) {
     if ((code || (type && type.code)) === 'MODULE_TYPELESS_PACKAGE_JSON') return;
     return emit.call(process, warning, type, code);
   };
-  // shortcut: needs Node's type stripping (22.18+); older Node fails the whole import, upgrade Node if that bites.
+  // shortcut: needs Node's type stripping (22.18+); older Node gets run()'s message and no import, upgrade Node if that bites.
   const loaded = import(pathToFileURL(path.join(__dirname, 'band', `${name}.ts`)).href)
     .finally(() => { process.emitWarning = emit; });
   bandModules.set(name, loaded);
   return loaded;
 }
-const loadBoard = () => loadBand('board');
 
 // Same rebuild as writeBoard in hooks/band/register.tsx: every project's ledger, not only new rows.
 async function writeBoard(dir) {
   const names = fs.readdirSync(dir).filter(f => f.endsWith('.csv'));
   if (names.length === 0) return;
-  const { boardHtml, tasksFrom } = await loadBoard();
+  const { boardHtml, tasksFrom } = await loadBand('board');
   const texts = names.map(name => { try { return fs.readFileSync(path.join(dir, name), 'utf8'); } catch (e) { return ''; } });
   fs.writeFileSync(path.join(dir, 'board.html'), boardHtml(texts.flatMap(tasksFrom), Date.now()));
 }
 
 async function run() {
   const root = path.join(getClaudeDir(), 'projects');
-  const L = await loadBand('ledger');
-  const ledgers = L.ledgerDir(process.env.XDG_CONFIG_HOME, os.homedir());
+  const ledger = await loadBand('ledger').catch(e => {
+    throw new Error(`needs Node 22.18 or newer to load hooks/band/ledger.ts (this is ${process.version}): ${e.message}`);
+  });
+  const ledgers = ledger.ledgerDir(process.env.XDG_CONFIG_HOME, os.homedir());
   const byFile = new Map();
   const roots = new Map();
   let dirs = [];
@@ -267,18 +268,18 @@ async function run() {
       if (!stats || !Number.isFinite(stats.startedMs)) continue;
       sessions++;
       const { project, root: repo } = projectOf(cwd, roots);
-      const ledger = L.ledgerFile(ledgers, project, repo);
-      if (!byFile.has(ledger)) byFile.set(ledger, []);
-      byFile.get(ledger).push(sessionRow(L, id, project, stats));
+      const csvFile = ledger.ledgerFile(ledgers, project, repo);
+      if (!byFile.has(csvFile)) byFile.set(csvFile, []);
+      byFile.get(csvFile).push(taskRow(ledger, id, project, stats));
     }
   }
   fs.mkdirSync(ledgers, { recursive: true, mode: 0o700 });
-  const have = L.recorded(fs.readdirSync(ledgers).filter(f => f.endsWith('.csv')).map(f => { try { return fs.readFileSync(path.join(ledgers, f), 'utf8'); } catch (e) { return ''; } }));
+  const have = ledger.recordedSessions(fs.readdirSync(ledgers).filter(f => f.endsWith('.csv')).map(f => { try { return fs.readFileSync(path.join(ledgers, f), 'utf8'); } catch (e) { return ''; } }));
   let added = 0;
   for (const [file, rows] of byFile) {
     let existing = '';
     try { existing = fs.readFileSync(file, 'utf8'); } catch (e) {}
-    const merged = L.mergeRows(existing, rows, have);
+    const merged = ledger.mergeRows(existing, rows, have);
     if (merged.added > 0) fs.writeFileSync(file, merged.text, { mode: 0o600 });
     added += merged.added;
   }
@@ -295,4 +296,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { PRICES, replyCost, sessionStats, sessionRow, readRecords, run, loadBand, loadBoard };
+module.exports = { PRICES, replyCost, sessionStats, taskRow, readRecords, run, loadBand };

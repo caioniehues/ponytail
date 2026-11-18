@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 
 const vm = require('vm');
-const { replyCost, sessionStats, sessionRow, run, loadBand, loadBoard } = require('../hooks/ponytail-band-import');
+const { replyCost, sessionStats, taskRow, run, loadBand } = require('../hooks/ponytail-band-import');
 
 // Prices per reply: the official table, Haiku 5.5's long-prompt tier, unknown and fast replies left out.
 assert.equal(replyCost('claude-opus-5-5', { input_tokens: 1e6, output_tokens: 1e6 }), 24);
@@ -87,28 +87,28 @@ assert.equal(waited.agentMs, 10000 + 10000, 'the five hours waiting for approval
 assert.equal(sessionStats(records.filter(r => !r.origin)), null);
 
 // CSV: the band's format, an older header replaced, a recorded session never imported twice.
-let L, CSV_HEADER;
 async function rows() {
-  L = await loadBand('ledger');
-  CSV_HEADER = L.CSV_HEADER;
+  const ledger = await loadBand('ledger');
   for (const stats of unicode) {
-    const csv = L.csvRow(sessionRow(L, 'unicode-0000', 'shop', stats));
+    const csv = ledger.csvRow(taskRow(ledger, 'unicode-0000', 'shop', stats));
     assert.equal(Buffer.from(csv, 'utf8').toString('utf8'), csv, 'CSV encoding must not replace half an emoji');
   }
-  const row = sessionRow(L, 'abcd1234-0000', 'shop', s);
-  const line = L.csvRow(row);
+  const row = taskRow(ledger, 'abcd1234-0000', 'shop', s);
+  const line = ledger.csvRow(row);
   assert.ok(line.startsWith(`abcd1234-${s.startedMs},`) && line.endsWith(',import,claude-opus-5-5'));
-  assert.equal(L.csvRow(sessionRow(L, 'abcd1234-0000', 'shop', { ...s, name: '=2+2' })).split(',')[3], "'=2+2", 'a name starting with = is written as text, not a spreadsheet formula');
-  assert.equal(L.csvRow(sessionRow(L, 'abcd1234-0000', 'shop', { ...s, cost: null })).split(',')[4], '', 'an unknown price stays empty');
+  assert.deepEqual(line.split(',').slice(9, 14), ['', '', '', '', ''], 'reuse, reused, new, callers and tests stay empty: the import cannot know them');
+  assert.equal(ledger.csvRow(taskRow(ledger, 'abcd1234-0000', 'shop', { ...s, name: '=2+2' })).split(',')[3], "'=2+2", 'a name starting with = is written as text, not a spreadsheet formula');
+  assert.equal(ledger.csvRow(taskRow(ledger, 'abcd1234-0000', 'shop', { ...s, cost: null })).split(',')[4], '', 'an unknown price stays empty');
   const old = 'key,started,project,name\nabcd1234-1,2026-10-01 10:00,shop,Live\n';
-  const merged = L.mergeRows(old, [row, sessionRow(L, 'ffff0000-0000', 'shop', s)]);
+  const merged = ledger.mergeRows(old, [row, taskRow(ledger, 'ffff0000-0000', 'shop', s)]);
   assert.equal(merged.added, 1);
-  assert.equal(merged.text.split('\n')[0], CSV_HEADER);
-  assert.equal(L.mergeRows('', [row], new Set(['abcd1234-'])).added, 0, 'a session in another project file is not imported again');
+  assert.equal(merged.text.split('\n')[0], ledger.CSV_HEADER);
+  assert.equal(ledger.mergeRows('', [row], new Set(['abcd1234-'])).added, 0, 'a session in another project file is not imported again');
 }
 
 // End to end: transcripts under CLAUDE_CONFIG_DIR, the ledger and board.html under XDG_CONFIG_HOME.
 async function main() {
+  const { CSV_HEADER } = await loadBand('ledger');
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-import-'));
   const projects = path.join(temp, 'claude', 'projects', '-work-shop');
   fs.mkdirSync(path.join(projects, 'abcd1234-0000', 'subagents'), { recursive: true });
@@ -147,24 +147,26 @@ async function main() {
 
 // A name ending in a carriage return (a CRLF first prompt) stays one ledger row the board reads.
 async function carriageReturn() {
-  const { tasksFrom } = await loadBoard();
-  const tasks = tasksFrom(`${CSV_HEADER}\n${L.csvRow(sessionRow(L, 'abcd1234-0000', 'shop', { ...s, name: 'Fix cart\r' }))}\n`);
+  const ledger = await loadBand('ledger');
+  const { tasksFrom } = await loadBand('board');
+  const tasks = tasksFrom(`${ledger.CSV_HEADER}\n${ledger.csvRow(taskRow(ledger, 'abcd1234-0000', 'shop', { ...s, name: 'Fix cart\r' }))}\n`);
   assert.deepEqual(tasks.map(t => t.name), ['Fix cart\r'], 'the import quotes a carriage return as the band does');
 }
 
-// A project name that had to be rewritten goes to the band's hashed file (ledgerFile in hooks/band/ledger.ts).
+// A project name that had to be rewritten goes to the band's hashed file (ledgerFile in hooks/band/ledger.ts),
+// and a session in a desktop worktree to its repository's.
 async function rewrittenName() {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-import-'));
   const projects = path.join(temp, 'claude', 'projects', '-work-api-shop');
   fs.mkdirSync(projects, { recursive: true });
-  fs.writeFileSync(path.join(projects, 'abcd1234-0000.jsonl'), records.map(r => JSON.stringify({ ...r, cwd: '/work/api@shop' })).join('\n') + '\n');
+  fs.writeFileSync(path.join(projects, 'abcd1234-0000.jsonl'), records.map(r => JSON.stringify({ ...r, cwd: '/work/api@shop/.claude/worktrees/brave-otter' })).join('\n') + '\n');
   const env = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
   process.env.CLAUDE_CONFIG_DIR = path.join(temp, 'claude');
   process.env.XDG_CONFIG_HOME = path.join(temp, 'config');
   try {
     await run();
     const files = fs.readdirSync(path.join(temp, 'config', 'ponytail', 'band')).filter(f => f.endsWith('.csv'));
-    assert.deepEqual(files, ['api_shop_ad0ec4e8.csv'], 'api@shop gets the file the band writes, not api_shop.csv');
+    assert.deepEqual(files, ['api_shop_ad0ec4e8.csv'], 'api@shop gets the file the band writes for its repository, not api_shop.csv');
   } finally {
     for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
     fs.rmSync(temp, { recursive: true, force: true });
@@ -174,7 +176,7 @@ async function rewrittenName() {
 // The board's month periods span whole calendar days (dietrichgebert/ponytail#1382). Here and not in band.test.tsx:
 // the engine's test sandbox refuses to evaluate the page's script, so node runs its monthKeys.
 async function monthPeriods() {
-  const { boardHtml } = await loadBoard();
+  const { boardHtml } = await loadBand('board');
   const now = Date.UTC(2026, 10, 9, 12, 0);
   const src = /function monthKeys[\s\S]*?\n  }\n/.exec(boardHtml([], now))?.[0] ?? '';
   assert.ok(src !== '', 'the board script defines monthKeys');

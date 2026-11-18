@@ -788,6 +788,32 @@ for (const command of ['clear', 'resume', 'branch']) {
   })
 }
 
+test('without a home folder or XDG_CONFIG_HOME the band writes no ledger, rather than one under /.config', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const writes: string[] = []
+  on('env.get', () => ({ value: undefined }))
+  on('session.repo', () => ({ value: { root: '/repo' } }) as never)
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('session.id', () => ({ value: 's1' }))
+  on('session.turns', () => ({ value: 1 }))
+  on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0.5 } } }) as never)
+  on('process.run', () => ran(1) as never)
+  on('fs.read', () => ({ deny: 'missing' }) as never)
+  on('fs.list', () => ({ value: [] }))
+  on('fs.write', ($, e) => {
+    writes.push(e.path.replace(/\\/g, '/'))
+    return { value: undefined }
+  })
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('turn.complete', () => ({ text: '' }))
+
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+
+  expect(writes.filter(p => p.includes('ponytail/band'))).toEqual([])
+})
+
 test('two project names that sanitize to the same filename write separate ledgers', async ($, on) => {
   mock.clock(on)
   mock.store(on)

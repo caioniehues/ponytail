@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import { base, boardHtml, tasksFrom } from './board'
-import { ledgerDir as ledgerDirOf, ledgerFile, taskKey, upsertCsv } from './ledger'
+import { ledgerDir, ledgerFile, taskKey, upsertCsv } from './ledger'
 import type { Band } from './types'
 import type { Col } from './metrics'
 import {
@@ -187,14 +187,18 @@ async function findTranscript($: EngineInterface, session: string): Promise<stri
   return ''
 }
 
-const ledgerDir = async ($: EngineInterface) => ledgerDirOf(await $.env.get('XDG_CONFIG_HOME'), (await home($)) ?? '')
+// Undefined without XDG_CONFIG_HOME or a home folder: no ledger then, rather than one under /.config.
+async function ledgerFolder($: EngineInterface) {
+  const [xdg, h] = [await $.env.get('XDG_CONFIG_HOME'), await home($)]
+  return xdg || h ? ledgerDir(xdg, h ?? '') : undefined
+}
 
 // After every turn: the task's row in a CSV per project, and the same row to a webhook if one is set.
 async function record($: EngineInterface, b: Band, options: Options) {
   const startedAt = (await $.session.usage()).startedAt
   const row = snapshot(b, startedAt)
-  if (options.ledger !== false && b.project !== '') {
-    const dir = await ledgerDir($)
+  const dir = await ledgerFolder($)
+  if (options.ledger !== false && b.project !== '' && dir !== undefined) {
     const root = (await $.session.repo().catch(() => null))?.root ?? (await $.session.cwd())
     const file = ledgerFile(dir, b.project, root)
     const existing = await $.fs.read(file).catch(() => '')
@@ -228,7 +232,7 @@ async function writeBoard($: EngineInterface, dir: string) {
   const texts = await Promise.all(entries.filter(f => f.kind === 'file' && f.name.endsWith('.csv')).map(f => $.fs.read(`${dir}/${f.name}`).catch(() => '')))
   const file = `${dir}/board.html`
   // The folder found under its upper-case name: a file system that ignores case (Windows, macOS by default).
-  // dir is always ledgerDir(), which ends in lower-case /ponytail/band, so the upper-case name is another path.
+  // dir is always ledgerFolder(), which ends in lower-case /ponytail/band, so the upper-case name is another path.
   const ignoreCase = await $.fs.exists(dir.toUpperCase()).catch(() => false)
   await $.fs.write(file, boardHtml(texts.flatMap(tasksFrom), await $.clock.now(), ignoreCase))
   return file
@@ -236,7 +240,9 @@ async function writeBoard($: EngineInterface, dir: string) {
 
 // Builds the board fresh and opens it in the browser.
 async function openBoard($: EngineInterface) {
-  const file = await writeBoard($, await ledgerDir($))
+  const dir = await ledgerFolder($)
+  if (dir === undefined) return $.ui.status('ponytail band: no home folder for the board')
+  const file = await writeBoard($, dir)
   const windows = (await $.env.get('OS')) === 'Windows_NT'
   const mac = !windows && (await $.process.run(['uname'])).stdout.trim() === 'Darwin'
   await $.process.run(windows ? ['cmd', '/c', 'start', '', file] : [mac ? 'open' : 'xdg-open', file])
@@ -267,7 +273,8 @@ async function start($: EngineInterface): Promise<{ known: Known }> {
   const session = await $.session.id()
   // The cost so far is the baseline for the last turn's own cost.
   const usage = await $.session.usage().catch(() => undefined)
-  const csv = usage ? await $.fs.read(ledgerFile(await ledgerDir($), project, root)).catch(() => '') : ''
+  const dir = await ledgerFolder($)
+  const csv = usage && dir !== undefined ? await $.fs.read(ledgerFile(dir, project, root)).catch(() => '') : ''
   const key = usage ? taskKey(session, usage.startedAt) : ''
   // Another session (/resume, /branch) starts its own counters; its row brings back what it had.
   await update($, band, b => resume({ ...EMPTY, ...(b.session === session ? b : { ...b, ...TASK }), level, pending, details, project, session, cost: usage?.cost?.usd ?? b.cost }, csv, key))

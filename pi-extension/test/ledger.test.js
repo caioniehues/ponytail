@@ -222,6 +222,15 @@ describe("registerBoard agent_end", () => {
     assert.ok(readFileSync(join(dir, "my-repo.csv"), "utf8").includes(KEY), "a worktree's row should be in its repo's file");
   }));
 
+  test("should write a rewritten project name to the band's hashed file for its repo when in a worktree", () => withLedger(async (dir) => {
+    const h = harness({ exec: (cmd) => (cmd === "git" ? { code: 0, stdout: "/work/api@shop/.git\n/work/api@shop-wt\n" } : { code: 1 }) });
+    await h.start();
+
+    await h.run();
+
+    assert.ok(readFileSync(join(dir, "api_shop_ad0ec4e8.csv"), "utf8").includes(KEY), "row should be in the file the band writes for /work/api@shop");
+  }));
+
   test("should name the CSV after the cwd when git has no repo", () => withLedger(async (dir) => {
     const h = harness();
     await h.start();

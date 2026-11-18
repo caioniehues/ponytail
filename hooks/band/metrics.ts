@@ -1,10 +1,10 @@
 // Pure helpers for the band: no `$`, so the tests call them directly.
 
 import { duration, elapsed, fmtTokens } from './board'
-import { rowFor, stamp, taskKey } from './ledger'
+import { rowFor, stamp, taskKey, totalTokens } from './ledger'
 import type { Band, Tokens } from './types'
 
-export { duration, elapsed, fmtTokens }
+export { duration, elapsed, fmtTokens, totalTokens }
 
 // ponytail-map.js's skip rules plus Swift test folders and files: tests, vendored and generated code are not "reuse".
 const SKIP_DIR = /(^|\/)(node_modules|\.git|dist|build|out|vendor|venv|\.venv|__pycache__|coverage|\.next|target|migrations|fixtures|tests?|[^/]*Tests|__tests__|spec)(\/|$)/
@@ -379,7 +379,6 @@ export const addTokens = (t: Tokens, u: Usage): Tokens => ({
   cacheWrite: t.cacheWrite + u.cache_creation_input_tokens,
 })
 
-export const totalTokens = (t: Tokens) => t.input + t.output + t.cacheRead + t.cacheWrite
 
 export const testsLabel = (t: Band['tests']) =>
   t.state === 'pass' ? `${t.passed ?? ''} passed`.trim() : t.state === 'fail' ? `${t.failed ?? ''} failed`.trim() : t.state === 'stale' ? 'stale' : 'not run'
