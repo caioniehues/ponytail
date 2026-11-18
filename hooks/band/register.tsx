@@ -335,7 +335,8 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || (await bandHidden($))) return next(e)
     // Other mods share this slot: draw theirs below ours instead of replacing it.
-    // next(e) rejects only when nothing answers beneath (the test harness): the band still draws.
+    // Beneath is another mod or Claude Code's own content (from 2.1.321 the test harness hands back the engine's too).
+    // next(e) rejects only when nothing answers beneath (the harness up to 2.1.319): the band still draws.
     const below = await next(e).catch(() => undefined)
 
     const b = await load($)
@@ -379,7 +380,7 @@ export const register: Register = (on, options) => {
 
     if (!b.details) {
       return stack(
-        <Box flexDirection="row" alignItems="center" gap={2} width={width}>
+        <Box key="band" flexDirection="row" alignItems="center" gap={2} width={width}>
           {/* A click opens the four levels: one click, one turn, no stops on levels nobody wanted. */}
           {/* Button takes one string label (engine 2.1.292 refuses Text children), so the dot sits beside it. */}
           <Text color={b.level === 'off' ? 'inactive' : 'suggestion'}>●</Text>
@@ -452,7 +453,7 @@ export const register: Register = (on, options) => {
 
     return stack(
       // The desktop's SVG draws its own line at the top, which would touch the buttons without the gap.
-      <Box flexDirection="column" width={width} gap={e.surface === 'desktop' ? 1 : 0}>
+      <Box key="band" flexDirection="column" width={width} gap={e.surface === 'desktop' ? 1 : 0}>
         <Box flexDirection="row" alignItems="center" gap={1}>
           {LEVELS.map(level => (
             <Button

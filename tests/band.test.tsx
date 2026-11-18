@@ -326,9 +326,9 @@ test('the row takes bodyColumns only in the terminal, where a Button is as wide 
   mock.store(on)
   for (const [surface, width] of [['terminal', 100], ['vscode', undefined]] as const) {
     const ui = await $.ui.mount({ plugin: 'ponytail', surface, ...BAND })
-    expect((await ui.find({ type: 'Box' }))?.props.width).toBe(width)
+    expect((await ui.find({ key: 'band' }))?.props.width).toBe(width)
     await ui.press({ key: 'details' })
-    expect((await ui.find({ type: 'Box' }))?.props.width).toBe(width)
+    expect((await ui.find({ key: 'band' }))?.props.width).toBe(width)
     await ui.unmount()
   }
 })
@@ -340,7 +340,7 @@ test('the details view has its line without empty rows, and off the terminal its
     const ui = await $.ui.mount({ plugin: 'ponytail', surface, ...BAND })
     await ui.press({ key: 'details' })
     expect(await ui.find({ type: 'Text', text: /─/ })).toBeDefined()
-    expect((await ui.find({ type: 'Box' }))?.props.gap).toBe(0)
+    expect((await ui.find({ key: 'band' }))?.props.gap).toBe(0)
     const cost = (await ui.find({ key: 'cost' }))?.props
     expect(surface === 'terminal' ? cost?.width : cost?.flexGrow).toBe(surface === 'terminal' ? 31 : 1)
     // The view is stored, so the next surface would start in details: switch back.
@@ -350,7 +350,7 @@ test('the details view has its line without empty rows, and off the terminal its
   // The desktop keeps a gap above its SVG, whose top line would otherwise touch the buttons.
   const ui = await $.ui.mount({ plugin: 'ponytail', surface: 'desktop', ...BAND })
   await ui.press({ key: 'details' })
-  expect((await ui.find({ type: 'Box' }))?.props.gap).toBe(1)
+  expect((await ui.find({ key: 'band' }))?.props.gap).toBe(1)
   await ui.unmount()
 })
 
