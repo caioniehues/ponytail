@@ -3,6 +3,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { BAND_SESSION } from './fixtures/band-session'
+import { bandSession, ledgerField, ran } from './fixtures/band-turn'
 
 import { boardHtml, parseCsv, tasksFrom } from '../hooks/band/board'
 import type { Band } from '../hooks/band/types'
@@ -34,7 +35,6 @@ import {
   toolTestCounts,
   toolCalls,
   toolsSummary,
-  TITLE_RECORD,
   TOOL_RESULT_RECORD,
   TOOL_USE_RECORD,
   totalTokens,
@@ -45,8 +45,6 @@ import {
   webhookRequest,
 } from '../hooks/band/metrics'
 
-// A mocked process.run answer.
-const ran = (exitCode: number, stdout = '') => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
 test('definition and caller searches skip binary files', async ($, on) => {
   mock.clock(on)
@@ -600,49 +598,6 @@ test('after /ponytail band the band draws nothing', async ($, on) => {
   await ui.unmount()
 })
 
-// A band test's session: the band flag, a transcript per session, and every command and write the band makes.
-// ledger: the ledger folder exists already. title: the session's sidebar name in its transcript.
-function bandSession(on: On, state: { hidden: boolean; usd: number; calls?: string; defs?: string; ledger?: boolean; title?: string }) {
-  let session = 's1'
-  const transcript = () => `/home/u/.claude/projects/-repo/${session}.jsonl`
-  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
-  on('fs.read', ($, e) => (e.path.replaceAll('\\', '/').endsWith('/home/u/.claude/.ponytail-band') && state.hidden ? { value: 'off' } : { deny: 'missing' }) as never)
-  on('session.repo', () => ({ value: { root: '/repo' } }) as never)
-  on('session.root', () => ({ value: '-repo' }))
-  on('session.id', () => ({ value: session }))
-  on('session.turns', () => ({ value: 1 }))
-  on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: state.usd } } }) as never)
-  on('fs.exists', ($, e) => ({ value: e.path === transcript() || (state.ledger === true && e.path.endsWith('/.config/ponytail/band')) }))
-  on('fs.list', () => ({ value: [] }))
-  const writes: { path: string; text: string }[] = []
-  on('fs.write', ($, e) => {
-    writes.push({ path: e.path.replace(/\\/g, '/'), text: e.text })
-    return { value: undefined }
-  })
-  // The fixture's tool calls: an Edit that removes `legacy`, so a shown turn searches for its callers.
-  const toolLines = BAND_SESSION.split('\n').filter(line => line.includes(TOOL_USE_RECORD) || line.includes(TOOL_RESULT_RECORD)).join('\n')
-  const runs: string[][] = []
-  on('process.run', ($, e) => {
-    runs.push([...e.argv])
-    if (e.argv.includes(TITLE_RECORD) && state.title !== undefined) return ran(0, JSON.stringify({ type: 'custom-title', customTitle: state.title })) as never
-    if (e.argv.includes(TOOL_USE_RECORD)) return ran(0, state.calls ?? toolLines) as never
-    return (e.argv.includes('-nE') && state.defs !== undefined ? ran(0, state.defs) : ran(1)) as never
-  })
-  on('command.run', () => {
-    session = 's2'
-    return { text: '' }
-  })
-  on('session.start', ($, e) => ({ cwd: e.cwd }))
-  on('turn.complete', () => ({ text: '' }))
-  const searches = () => runs.filter(argv => argv[0] === 'git' || argv[0] === 'grep')
-  return { runs, searches, writes }
-}
-
-// A field of the last ledger row a turn wrote.
-function ledgerField(writes: { path: string; text: string }[]) {
-  const [header, row] = parseCsv(writes.filter(w => w.path.endsWith('/repo.csv')).at(-1)?.text ?? '')
-  return (name: string) => row?.[header?.indexOf(name) ?? -1]
-}
 
 test('a hidden band searches nothing at start-up, after /clear or after a turn, and writes no ledger or board', async ($, on) => {
   mock.clock(on)
