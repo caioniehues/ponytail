@@ -11,9 +11,6 @@ const { spawnSync } = require('child_process');
 const { StringDecoder } = require('string_decoder');
 const { getClaudeDir } = require('./ponytail-config');
 
-// The band's columns (CSV_HEADER in hooks/band/metrics.ts; a test keeps the two equal).
-const CSV_HEADER = 'key,started,project,name,cost_usd,turns,agent_minutes,tokens_total,tokens_output,reuse_pct,reused,new,callers_open,tests,level,model';
-
 // USD per million tokens from https://platform.claude.com/docs/en/about-claude/pricing, checked
 // 2026-10-17: [input, 5-minute cache write, 1-hour cache write, cache read, output]. Opus 5.5 and
 // Fable 5.1 also match Claude Code's own totals in real transcripts. A model missing here, or a
@@ -176,23 +173,13 @@ function sessionStats(records, subagentRecords = [], sessionId = '') {
   };
 }
 
-// Same stamp and quoting as the band (hooks/band/metrics.ts), so the board reads both alike.
-const two = n => String(n).padStart(2, '0');
-const stamp = t => { const d = new Date(t); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`; };
-const field = v => { let s = v === null || v === undefined ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-
-function csvRow(sessionId, project, s) {
-  return [`${sessionId.slice(0, 8)}-${s.startedMs}`, stamp(s.startedMs), project, s.name, s.cost === null ? '' : s.cost.toFixed(2), s.turns,
-    (s.agentMs / 60000).toFixed(1), s.tokens, s.output, '', '', '', '', '', 'import', s.model].map(field).join(',');
-}
-
-// New rows go in after the ledger's own: a newer header replaces an older one, and a session
-// already recorded anywhere in the ledger (same session id prefix) is never imported twice.
-const sessionOf = row => row.slice(0, 9);
-function mergeRows(existing, rows, have = new Set()) {
-  const kept = existing.split('\n').filter(l => l !== '' && !l.startsWith('key,'));
-  const added = rows.filter(r => !have.has(sessionOf(r)) && !kept.some(l => sessionOf(l) === sessionOf(r)));
-  return { text: [CSV_HEADER, ...kept, ...added].join('\n') + '\n', added: added.length };
+// A session's row in the band's ledger (hooks/band/ledger.ts, loaded as L). The import cannot know reuse, callers or tests.
+function sessionRow(L, sessionId, project, s) {
+  return {
+    key: L.taskKey(sessionId, s.startedMs), started: L.stamp(s.startedMs), project, name: s.name, cost: s.cost, turns: s.turns,
+    agentMs: s.agentMs, tokens: { input: s.tokens - s.output, output: s.output, cacheRead: 0, cacheWrite: 0 },
+    reuse: null, reused: 0, created: 0, callersOpen: 0, tests: '', level: 'import', model: s.model,
+  };
 }
 
 const TEMP = [os.tmpdir(), '/tmp/', '/private/tmp/', '/var/folders/', '/private/var/folders/'];
@@ -208,10 +195,6 @@ function projectOf(cwd, cache) {
     cache.set(cwd, { project: path.basename(root.replace(/[\\/]+$/, '')), root });
   }
   return cache.get(cwd);
-}
-
-function ledgerDir() {
-  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'ponytail', 'band');
 }
 
 // Node loads the band's own TypeScript (hooks/band/<name>.ts). Its imports have no extension,
@@ -253,7 +236,8 @@ async function writeBoard(dir) {
 
 async function run() {
   const root = path.join(getClaudeDir(), 'projects');
-  const { ledgerFile } = await loadBand('metrics');
+  const L = await loadBand('ledger');
+  const ledgers = L.ledgerDir(process.env.XDG_CONFIG_HOME, os.homedir());
   const byFile = new Map();
   const roots = new Map();
   let dirs = [];
@@ -283,26 +267,22 @@ async function run() {
       if (!stats || !Number.isFinite(stats.startedMs)) continue;
       sessions++;
       const { project, root: repo } = projectOf(cwd, roots);
-      const ledger = ledgerFile(ledgerDir(), project, repo);
+      const ledger = L.ledgerFile(ledgers, project, repo);
       if (!byFile.has(ledger)) byFile.set(ledger, []);
-      byFile.get(ledger).push(csvRow(id, project, stats));
+      byFile.get(ledger).push(sessionRow(L, id, project, stats));
     }
   }
-  const dir = ledgerDir();
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const have = new Set();
-  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.csv'))) {
-    try { fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach(l => l && !l.startsWith('key,') && have.add(sessionOf(l))); } catch (e) {}
-  }
+  fs.mkdirSync(ledgers, { recursive: true, mode: 0o700 });
+  const have = L.recorded(fs.readdirSync(ledgers).filter(f => f.endsWith('.csv')).map(f => { try { return fs.readFileSync(path.join(ledgers, f), 'utf8'); } catch (e) { return ''; } }));
   let added = 0;
   for (const [file, rows] of byFile) {
     let existing = '';
     try { existing = fs.readFileSync(file, 'utf8'); } catch (e) {}
-    const merged = mergeRows(existing, rows, have);
+    const merged = L.mergeRows(existing, rows, have);
     if (merged.added > 0) fs.writeFileSync(file, merged.text, { mode: 0o600 });
     added += merged.added;
   }
-  await writeBoard(dir);
+  await writeBoard(ledgers);
   return { sessions, added };
 }
 
@@ -315,4 +295,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { CSV_HEADER, PRICES, replyCost, sessionStats, csvRow, mergeRows, readRecords, run, loadBoard };
+module.exports = { PRICES, replyCost, sessionStats, sessionRow, readRecords, run, loadBand, loadBoard };

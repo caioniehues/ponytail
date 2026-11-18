@@ -72,7 +72,7 @@ export function snapshotFrom({ entries, header, sessionId, project, named, agent
 }
 
 // Same place as the band's ledger, so pi and Claude Code share one board.
-export const ledgerDir = () => join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "ponytail", "band");
+export const ledgerDir = (band) => band.ledgerDir(process.env.XDG_CONFIG_HOME, homedir());
 
 export const opener = (platform, file) =>
   platform === "win32" ? ["cmd", ["/c", "start", "", file]] : [platform === "darwin" ? "open" : "xdg-open", [file]];
@@ -81,7 +81,7 @@ export const opener = (platform, file) =>
 const write = (file, text) => writeFileSync(file, text, { mode: 0o600 });
 
 function writeBoard(band) {
-  const dir = ledgerDir();
+  const dir = ledgerDir(band);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const texts = readdirSync(dir).filter((f) => f.endsWith(".csv")).map((f) => readFileSync(join(dir, f), "utf8"));
   const file = join(dir, "board.html");
@@ -114,12 +114,9 @@ export function registerBoard(pi, band) {
 
   // A reload or resume picks the agent time up from the session's own row, as the band's resume does.
   function readAgentMs(ctx) {
-    const file = band.ledgerFile(ledgerDir(), project, root);
+    const file = band.ledgerFile(ledgerDir(band), project, root);
     if (!existsSync(file)) return 0;
-    const [head, ...rows] = band.parseCsv(readFileSync(file, "utf8"));
-    const key = keyOf(ctx);
-    const row = head && rows.find((r) => r[head.indexOf("key")] === key);
-    return (Number(row?.[head.indexOf("agent_minutes")]) || 0) * 60000;
+    return (Number(band.rowFor(readFileSync(file, "utf8"), keyOf(ctx))?.agent_minutes) || 0) * 60000;
   }
 
   pi.on("session_start", async (_event, ctx) => {
@@ -155,7 +152,7 @@ export function registerBoard(pi, band) {
         level: resolveSessionMode(entries, readDefaultMode()),
       }, band);
       if (!snapshot) return;
-      const dir = ledgerDir();
+      const dir = ledgerDir(band);
       mkdirSync(dir, { recursive: true, mode: 0o700 });
       const file = band.ledgerFile(dir, project, root);
       write(file, band.upsertCsv(existsSync(file) ? readFileSync(file, "utf8") : "", snapshot));
@@ -168,7 +165,7 @@ export function registerBoard(pi, band) {
   pi.registerCommand("ponytail-board", {
     description: "Rebuild and open the ponytail board",
     handler: async (_args, ctx) => {
-      const file = join(ledgerDir(), "board.html");
+      const file = join(ledgerDir(band), "board.html");
       try {
         const [cmd, args] = opener(process.platform, writeBoard(band));
         const opened = await pi.exec(cmd, args);

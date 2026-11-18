@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import { base, boardHtml, tasksFrom } from './board'
+import { ledgerDir as ledgerDirOf, ledgerFile, taskKey, upsertCsv } from './ledger'
 import type { Band } from './types'
 import type { Col } from './metrics'
 import {
@@ -16,7 +17,6 @@ import {
   elapsed,
   fmtTokens,
   hits,
-  ledgerFile,
   mainModel,
   markdown,
   metricsSvg,
@@ -27,7 +27,6 @@ import {
   resume,
   snapshot,
   sessionTitle,
-  taskKey,
   testsLabel,
   TITLE_RECORD,
   toolCalls,
@@ -35,7 +34,6 @@ import {
   TOOL_USE_RECORD,
   toolsSummary,
   totalTokens,
-  upsertCsv,
   webhookRequest,
 } from './metrics'
 
@@ -189,11 +187,7 @@ async function findTranscript($: EngineInterface, session: string): Promise<stri
   return ''
 }
 
-// Where the task ledgers and the board live.
-// shortcut: ~/.config only (XDG respected); Windows would want %APPDATA%.
-async function ledgerDir($: EngineInterface) {
-  return `${(await $.env.get('XDG_CONFIG_HOME')) ?? `${await home($)}/.config`}/ponytail/band`
-}
+const ledgerDir = async ($: EngineInterface) => ledgerDirOf(await $.env.get('XDG_CONFIG_HOME'), (await home($)) ?? '')
 
 // After every turn: the task's row in a CSV per project, and the same row to a webhook if one is set.
 async function record($: EngineInterface, b: Band, options: Options) {

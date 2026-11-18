@@ -5,7 +5,7 @@ import type { On } from 'claude-code'
 
 import { BAND_SESSION } from './band-session'
 
-import { parseCsv } from '../../hooks/band/board'
+import { parseCsv } from '../../hooks/band/ledger'
 import { TITLE_RECORD, TOOL_RESULT_RECORD, TOOL_USE_RECORD } from '../../hooks/band/metrics'
 
 // A mocked process.run answer.

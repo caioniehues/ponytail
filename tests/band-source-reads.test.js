@@ -8,7 +8,6 @@ const path = require('path');
 
 // [test file, band file it reads, why text is the right check]
 const ALLOWED = [
-  ['band-import.test.js', 'metrics.ts', 'CSV_HEADER: the import and the band write the same columns, and a JS test cannot import the TS'],
   ['band-mod.test.js', 'register.tsx', 'a tool.call hook must stay absent (docs/adr/0001-band-reads-tool-calls-from-the-transcript.md)'],
 ];
 

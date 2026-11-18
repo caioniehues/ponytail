@@ -6,13 +6,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const root = path.join(__dirname, '..');
 const vm = require('vm');
-const { CSV_HEADER, replyCost, sessionStats, csvRow, mergeRows, run, loadBoard } = require('../hooks/ponytail-band-import');
-
-// The import writes the band's own columns.
-const metrics = fs.readFileSync(path.join(root, 'hooks', 'band', 'metrics.ts'), 'utf8');
-assert.equal(CSV_HEADER, /export const CSV_HEADER = '([^']+)'/.exec(metrics)[1], 'import and band must write the same CSV columns');
+const { replyCost, sessionStats, sessionRow, run, loadBand, loadBoard } = require('../hooks/ponytail-band-import');
 
 // Prices per reply: the official table, Haiku 5.5's long-prompt tier, unknown and fast replies left out.
 assert.equal(replyCost('claude-opus-5-5', { input_tokens: 1e6, output_tokens: 1e6 }), 24);
@@ -62,15 +57,15 @@ assert.ok(Math.abs(early.cost - est) < 1e-9, 'a total written before later repli
 assert.equal(sessionStats([...records, { type: 'custom-title', customTitle: 'Cart totals' }]).name, 'Cart totals', 'the sidebar name wins');
 
 // A supplementary character at the name limit must survive CSV's UTF-8 encoding.
+const unicode = [];
 for (const prefix of ['x'.repeat(59), '😀'.repeat(59)]) {
   const name = prefix + '😀';
   for (const titled of [false, true]) {
-    const unicode = [prompt('00:00', name + ' omitted'), reply('00:10', 'unicode', u(1, 1))];
-    if (titled) unicode.push({ type: 'custom-title', customTitle: name + ' omitted' });
-    const stats = sessionStats(unicode);
+    const named = [prompt('00:00', name + ' omitted'), reply('00:10', 'unicode', u(1, 1))];
+    if (titled) named.push({ type: 'custom-title', customTitle: name + ' omitted' });
+    const stats = sessionStats(named);
     assert.equal(stats.name, name, 'both prompt and sidebar names stop at 60 Unicode code points');
-    const csv = csvRow('unicode-0000', 'shop', stats);
-    assert.equal(Buffer.from(csv, 'utf8').toString('utf8'), csv, 'CSV encoding must not replace half an emoji');
+    unicode.push(stats);
   }
 }
 
@@ -92,15 +87,25 @@ assert.equal(waited.agentMs, 10000 + 10000, 'the five hours waiting for approval
 assert.equal(sessionStats(records.filter(r => !r.origin)), null);
 
 // CSV: the band's format, an older header replaced, a recorded session never imported twice.
-const row = csvRow('abcd1234-0000', 'shop', s);
-assert.ok(row.startsWith(`abcd1234-${s.startedMs},`) && row.endsWith(',import,claude-opus-5-5'));
-const formulaRow = csvRow('abcd1234-0000', 'shop', { ...s, name: '=2+2' });
-assert.equal(formulaRow.split(',')[3], "'=2+2", 'a name starting with = is written as text, not a spreadsheet formula');
-const old = 'key,started,project,name\nabcd1234-1,2026-10-01 10:00,shop,Live\n';
-const merged = mergeRows(old, [row, csvRow('ffff0000-0000', 'shop', s)]);
-assert.equal(merged.added, 1);
-assert.equal(merged.text.split('\n')[0], CSV_HEADER);
-assert.equal(mergeRows('', [row], new Set(['abcd1234-'])).added, 0, 'a session in another project file is not imported again');
+let L, CSV_HEADER;
+async function rows() {
+  L = await loadBand('ledger');
+  CSV_HEADER = L.CSV_HEADER;
+  for (const stats of unicode) {
+    const csv = L.csvRow(sessionRow(L, 'unicode-0000', 'shop', stats));
+    assert.equal(Buffer.from(csv, 'utf8').toString('utf8'), csv, 'CSV encoding must not replace half an emoji');
+  }
+  const row = sessionRow(L, 'abcd1234-0000', 'shop', s);
+  const line = L.csvRow(row);
+  assert.ok(line.startsWith(`abcd1234-${s.startedMs},`) && line.endsWith(',import,claude-opus-5-5'));
+  assert.equal(L.csvRow(sessionRow(L, 'abcd1234-0000', 'shop', { ...s, name: '=2+2' })).split(',')[3], "'=2+2", 'a name starting with = is written as text, not a spreadsheet formula');
+  assert.equal(L.csvRow(sessionRow(L, 'abcd1234-0000', 'shop', { ...s, cost: null })).split(',')[4], '', 'an unknown price stays empty');
+  const old = 'key,started,project,name\nabcd1234-1,2026-10-01 10:00,shop,Live\n';
+  const merged = L.mergeRows(old, [row, sessionRow(L, 'ffff0000-0000', 'shop', s)]);
+  assert.equal(merged.added, 1);
+  assert.equal(merged.text.split('\n')[0], CSV_HEADER);
+  assert.equal(L.mergeRows('', [row], new Set(['abcd1234-'])).added, 0, 'a session in another project file is not imported again');
+}
 
 // End to end: transcripts under CLAUDE_CONFIG_DIR, the ledger and board.html under XDG_CONFIG_HOME.
 async function main() {
@@ -143,11 +148,11 @@ async function main() {
 // A name ending in a carriage return (a CRLF first prompt) stays one ledger row the board reads.
 async function carriageReturn() {
   const { tasksFrom } = await loadBoard();
-  const tasks = tasksFrom(`${CSV_HEADER}\n${csvRow('abcd1234-0000', 'shop', { ...s, name: 'Fix cart\r' })}\n`);
+  const tasks = tasksFrom(`${CSV_HEADER}\n${L.csvRow(sessionRow(L, 'abcd1234-0000', 'shop', { ...s, name: 'Fix cart\r' }))}\n`);
   assert.deepEqual(tasks.map(t => t.name), ['Fix cart\r'], 'the import quotes a carriage return as the band does');
 }
 
-// A project name that had to be rewritten goes to the band's hashed file (ledgerFile in hooks/band/metrics.ts).
+// A project name that had to be rewritten goes to the band's hashed file (ledgerFile in hooks/band/ledger.ts).
 async function rewrittenName() {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-import-'));
   const projects = path.join(temp, 'claude', 'projects', '-work-api-shop');
@@ -178,7 +183,7 @@ async function monthPeriods() {
 }
 
 // The band's own writer locks a ledger directory it makes: tests/band.test.tsx.
-main().then(monthPeriods).then(carriageReturn).then(rewrittenName).catch(err => {
+rows().then(main).then(monthPeriods).then(carriageReturn).then(rewrittenName).catch(err => {
   console.error(err);
   process.exit(1);
 });

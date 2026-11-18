@@ -1,6 +1,7 @@
 // Pure helpers for the band: no `$`, so the tests call them directly.
 
-import { duration, elapsed, fmtTokens, parseCsv } from './board'
+import { duration, elapsed, fmtTokens } from './board'
+import { rowFor, stamp, taskKey } from './ledger'
 import type { Band, Tokens } from './types'
 
 export { duration, elapsed, fmtTokens }
@@ -380,12 +381,6 @@ export const addTokens = (t: Tokens, u: Usage): Tokens => ({
 
 export const totalTokens = (t: Tokens) => t.input + t.output + t.cacheRead + t.cacheWrite
 
-export const stamp = (ms: number) => {
-  const d = new Date(ms)
-  const two = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`
-}
-
 export const testsLabel = (t: Band['tests']) =>
   t.state === 'pass' ? `${t.passed ?? ''} passed`.trim() : t.state === 'fail' ? `${t.failed ?? ''} failed`.trim() : t.state === 'stale' ? 'stale' : 'not run'
 
@@ -441,18 +436,14 @@ export type Snapshot = {
   tests: string
 }
 
-// A task's row in the ledger: the session and when it started (a /clear starts a new one).
-export const taskKey = (session: string, startedAt: number) => `${session.slice(0, 8)}-${startedAt}`
-
 // A band that starts again mid-session (a reload, an update, a second copy) picks up the session's
 // row, so what only the band counts (tokens, agent time, the name, the cost) goes on instead of starting at zero.
 // The engine's own cost starts over in a new process (an IDE reload, a resumed session), the row's does not.
 // shortcut: the ledger keeps only the token total and output, so a resumed band books the rest as input.
 export function resume(b: Band, csv: string, key: string): Band {
-  const [head, ...rows] = parseCsv(csv)
-  const row = head ? rows.find(r => r[head.indexOf('key')] === key) : undefined
-  if (!head || !row) return b
-  const at = (col: string) => row[head.indexOf(col)] ?? ''
+  const row = rowFor(csv, key)
+  if (!row) return b
+  const at = (col: string) => row[col] ?? ''
   const total = Number(at('tokens_total')) || 0
   const output = Number(at('tokens_output')) || 0
   return {
@@ -507,46 +498,6 @@ export function markdown(s: Snapshot): string {
   ]
   const cell = (v: string) => v.replace(/\|/g, '\\|')
   return [`## ${cell(s.name || 'Untitled session')}`, '', '| | |', '|---|---|', ...rows.map(([k, v]) => `| ${k} | ${cell(v ?? '')} |`)].join('\n')
-}
-
-export const CSV_HEADER = 'key,started,project,name,cost_usd,turns,agent_minutes,tokens_total,tokens_output,reuse_pct,reused,new,callers_open,tests,level,model'
-
-// shortcut: 32-bit FNV-1a (hooks modules cannot import crypto), hash the root with sha256 if two rewritten names share a file
-function shortHash(text: string): string {
-  let h = 0x811c9dc5
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(16).padStart(8, '0')
-}
-
-// A name that is already a filename keeps that file, so myapp.csv still loads.
-// A name that had to be rewritten gets a short hash of the root so api@shop and api_shop do not share a ledger.
-export function ledgerFile(dir: string, project: string, root: string): string {
-  const slug = project.replace(/[^\w.-]/g, '_')
-  const id = slug === project ? slug : `${slug}_${shortHash(root.replace(/\\/g, '/').replace(/\/+$/, ''))}`
-  return `${dir}/${id}.csv`
-}
-
-const csvField = (v: string | number | null) => {
-  let s = v === null ? '' : String(v)
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
-export const csvRow = (s: Snapshot) =>
-  [s.key, s.started, s.project, s.name, s.cost.toFixed(2), s.turns, (s.agentMs / 60000).toFixed(1), totalTokens(s.tokens), s.tokens.output, s.reuse, s.reused, s.created, s.callersOpen, s.tests, s.level, s.model]
-    .map(csvField)
-    .join(',')
-
-// One row per session, replaced on every turn, so the file stays a table of tasks.
-// Split into records, not lines: a quoted name with a line break spans two lines.
-export function upsertCsv(existing: string, s: Snapshot): string {
-  const rows = parseCsv(existing)
-    .filter(r => r[0] !== 'key' && r[0] !== s.key)
-    .map(r => r.map(csvField).join(','))
-  return [CSV_HEADER, ...rows, csvRow(s)].join('\n') + '\n'
 }
 
 // shortcut: no share below 3 functions, where one new helper would read as "0% reuse"; tune the 3 if it shows too late.

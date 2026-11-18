@@ -2,6 +2,7 @@
 // No server and no network: inline CSS, inline SVG and a few lines of script.
 
 import { LOGO_PATHS, LOGO_VIEWBOX } from './logo'
+import { parseCsv } from './ledger'
 
 export const duration = (minutes: number) =>
   minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
@@ -67,37 +68,6 @@ export type Task = {
   tests: string
   level: string
   model: string
-}
-
-// RFC 4180 rows: quoted fields may hold commas, doubled quotes and line breaks.
-export function parseCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let field = ''
-  let quoted = false
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (quoted) {
-      if (c === '"' && text[i + 1] === '"') {
-        field += '"'
-        i++
-      } else if (c === '"') quoted = false
-      else field += c
-    } else if (c === '"') quoted = true
-    else if (c === ',') {
-      row.push(field)
-      field = ''
-    } else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++
-      row.push(field)
-      if (row.some(f => f !== '')) rows.push(row)
-      row = []
-      field = ''
-    } else field += c
-  }
-  row.push(field)
-  if (row.some(f => f !== '')) rows.push(row)
-  return rows
 }
 
 // The last name of a path, either slash, a trailing one ignored: a repo root's folder names its project.

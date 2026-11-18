@@ -4,24 +4,18 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 
+import * as ledger from "../../hooks/band/ledger.ts";
 import { ledgerDir, opener, registerBoard, sessionName, snapshotFrom, testsFrom } from "../ledger.js";
 
-// Stand-ins for the band's TypeScript, which plain Node cannot import.
+// The real ledger; stand-ins for the band's metrics and board, whose extensionless imports plain Node cannot resolve.
 const band = {
-  taskKey: (session, startedAt) => `${session.slice(0, 8)}-${startedAt}`,
-  ledgerFile: (dir, project) => join(dir, `${project}.csv`),
-  stamp: (ms) => `stamp:${ms}`,
+  ...ledger,
   isTestCommand: (command) => /\bnpm test\b/.test(command),
   testCounts: (output) => ({
     passed: /(\d+) passed/.test(output) ? Number(/(\d+) passed/.exec(output)[1]) : undefined,
     failed: /(\d+) failed/.test(output) ? Number(/(\d+) failed/.exec(output)[1]) : undefined,
   }),
   testsLabel: (t) => t.state,
-  upsertCsv: (existing, s) => {
-    const rows = existing.split("\n").filter((l) => l && !l.startsWith("key,") && !l.startsWith(`${s.key},`));
-    return ["key,agent_minutes", ...rows, `${s.key},${(s.agentMs / 60000).toFixed(1)}`].join("\n") + "\n";
-  },
-  parseCsv: (text) => text.trim().split("\n").map((l) => l.split(",")),
   tasksFrom: (text) => text.trim().split("\n").slice(1),
   boardHtml: (tasks) => `<board>${tasks.join("|")}</board>`,
 };
@@ -72,7 +66,7 @@ describe("snapshotFrom", () => {
     const s = snap(entries, { agentMs: 42, level: "lite" });
 
     assert.equal(s.key, KEY, "key should come from session id and header time");
-    assert.equal(s.started, `stamp:${Date.parse(HEADER.timestamp)}`, "started should be the stamped header time");
+    assert.equal(s.started, ledger.stamp(Date.parse(HEADER.timestamp)), "started should be the stamped header time");
     assert.deepEqual(
       [s.session, s.agentMs, s.level, s.project, s.reuse, s.reused, s.created, s.callersOpen, s.lastTurn],
       [HEADER.id, 42, "lite", "p", null, 0, 0, 0, null],
@@ -144,9 +138,9 @@ describe("ledger paths", () => {
     const previous = process.env.XDG_CONFIG_HOME;
     try {
       process.env.XDG_CONFIG_HOME = "/x";
-      const withXdg = ledgerDir();
+      const withXdg = ledgerDir(band);
       delete process.env.XDG_CONFIG_HOME;
-      const without = ledgerDir();
+      const without = ledgerDir(band);
 
       assert.equal(withXdg, join("/x", "ponytail", "band"), "dir should follow XDG_CONFIG_HOME");
       assert.equal(without, join(homedir(), ".config", "ponytail", "band"), "dir should fall back to ~/.config");
@@ -214,8 +208,9 @@ describe("registerBoard agent_end", () => {
     await h.run();
     await h.run();
 
-    assert.equal(readFileSync(join(dir, "my-repo.csv"), "utf8"), `key,agent_minutes\nforeign,1.0\n${KEY},0.0\n`, "foreign row should stay and own row appear once");
-    assert.equal(readFileSync(join(dir, "board.html"), "utf8"), `<board>foreign,1.0|${KEY},0.0</board>`, "board should be rebuilt from the CSV");
+    const csv = readFileSync(join(dir, "my-repo.csv"), "utf8");
+    assert.deepEqual(ledger.parseCsv(csv).map((r) => r[0]), ["key", "foreign", KEY], "foreign row should stay and own row appear once");
+    assert.equal(readFileSync(join(dir, "board.html"), "utf8"), `<board>${csv.trim().split("\n").slice(1).join("|")}</board>`, "board should be rebuilt from the CSV");
   }));
 
   test("should name the CSV after the main repo when the session is in a worktree", () => withLedger(async (dir) => {
@@ -255,7 +250,7 @@ describe("registerBoard agent_end", () => {
       Date.now = realNow;
     }
 
-    assert.ok(readFileSync(join(dir, "proj.csv"), "utf8").includes(`${KEY},3.0`), "2 min from the row plus 2 × 30 s should be 3.0");
+    assert.equal(ledger.rowFor(readFileSync(join(dir, "proj.csv"), "utf8"), KEY)?.agent_minutes, "3.0", "2 min from the row plus 2 × 30 s should be 3.0");
   }));
 
   test("should write no row when no assistant message exists", () => withLedger(async (dir) => {
