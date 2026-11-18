@@ -5,6 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+// Claude Code gets SessionStart context as hookSpecificOutput JSON (dietrichgebert/ponytail#1420); '' when the hook wrote nothing.
+const context = (stdout) => (stdout ? JSON.parse(stdout).hookSpecificOutput.additionalContext : '');
+
 test('resume preserves the live mode and emits only a reminder', (t) => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-resume-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
@@ -29,7 +32,7 @@ test('resume preserves the live mode and emits only a reminder', (t) => {
     run('ponytail-mode-tracker.js', resumeEnv, JSON.stringify({ prompt: '/ponytail ' + mode }));
     const result = resume();
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, 'PONYTAIL MODE ACTIVE — level: ' + mode);
+    assert.equal(context(result.stdout), 'PONYTAIL MODE ACTIVE — level: ' + mode);
     assert.equal(fs.readFileSync(resumeFlag, 'utf8'), mode);
   }
   run('ponytail-mode-tracker.js', resumeEnv, JSON.stringify({ prompt: 'stop ponytail' }));
@@ -49,7 +52,7 @@ test('resume keeps its own session level when another session in the repo starte
   hook('ponytail-activate.js', 'A', { source: 'startup' });
   hook('ponytail-mode-tracker.js', 'A', { prompt: '/ponytail ultra' });
   hook('ponytail-activate.js', 'B', { source: 'startup' }, 'off');
-  assert.equal(hook('ponytail-activate.js', 'A', { source: 'resume' }), 'PONYTAIL MODE ACTIVE — level: ultra');
+  assert.equal(context(hook('ponytail-activate.js', 'A', { source: 'resume' })), 'PONYTAIL MODE ACTIVE — level: ultra');
   assert.equal(hook('ponytail-activate.js', 'B', { source: 'resume' }), '', 'the session that started off resumes off');
 });
 
@@ -64,7 +67,7 @@ test('a session id with no state file of its own falls back to the project level
   // A session from before session keying: its level lives only in the project file.
   hook('ponytail-activate.js', JSON.stringify({ source: 'startup' }));
   hook('ponytail-mode-tracker.js', JSON.stringify({ prompt: '/ponytail ultra' }));
-  assert.equal(hook('ponytail-activate.js', JSON.stringify({ session_id: 'old', source: 'resume' })), 'PONYTAIL MODE ACTIVE — level: ultra');
+  assert.equal(context(hook('ponytail-activate.js', JSON.stringify({ session_id: 'old', source: 'resume' }))), 'PONYTAIL MODE ACTIVE — level: ultra');
 
   // A keyed session's switch also reaches the project file, which a subagent hook with no payload reads.
   hook('ponytail-mode-tracker.js', JSON.stringify({ session_id: 'A', prompt: '/ponytail lite' }));
@@ -118,5 +121,5 @@ test('a session resumed after 30 idle days keeps its own level', (t) => {
   const old = Date.now() / 1000 - 31 * 24 * 3600;
   for (const name of fs.readdirSync(sessions)) fs.utimesSync(path.join(sessions, name), old, old);
 
-  assert.equal(hook('ponytail-activate.js', 'A', { source: 'resume' }), 'PONYTAIL MODE ACTIVE — level: ultra');
+  assert.equal(context(hook('ponytail-activate.js', 'A', { source: 'resume' })), 'PONYTAIL MODE ACTIVE — level: ultra');
 });
