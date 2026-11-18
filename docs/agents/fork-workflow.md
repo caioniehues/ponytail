@@ -40,6 +40,7 @@ The fork keeps the ponytail level per session; upstream keeps one shared flag. P
 ## Band code
 
 - A new language needs four places: `DEFS`, `GREP_DEFS` (the start-up grep keeps only lines starting with its keywords), `DEF_PATHS` (start-up search globs) and `isSource`'s skip rules. Tests catch a missing glob (#1443) and a keyword `GREP_DEFS` drops, for the sample lines they list: add the new language's to both.
+- The ledger's text lives in `hooks/band/ledger.ts`: the header, key, stamp, folder, file name, quoting, upsert and the import's merge. The band, `/ponytail band import` and pi all write through it, so it does no I/O and imports nothing (node loads it with type stripping, pi through `pi-extension/board.js`). Upstream PRs that change `CSV_HEADER`, `csvField`, `upsertCsv` or `ledgerFile` in `metrics.ts`, the import's `field`, `csvRow` or `mergeRows`, or pi's `ledgerFile` are hand-ported into it; its tests are `tests/ledger.test.js`.
 - Known limits are written `// shortcut: <limit>, <when to upgrade>`; `/ponytail-debt` harvests them.
 - The band's test sandbox has no timers (`setTimeout` is not in its types). To prove a call does not wait for something held, await the call and let the test's 5 s timeout be the failure.
 - Band behaviour is tested through engine events in `tests/band.test.tsx`; drive a turn with `bandSession` (`tests/fixtures/band-turn.ts`) and add a `state` field for a new case. `tests/band-source-reads.test.js` fails a JS test that reads `hooks/band/` as text, except the reads it lists.

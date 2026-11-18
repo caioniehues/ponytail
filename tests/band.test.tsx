@@ -6,7 +6,7 @@ import { BAND_SESSION } from './fixtures/band-session'
 import { bandSession, ledgerField, ran } from './fixtures/band-turn'
 
 import { boardHtml, modelName, tasksFrom } from '../hooks/band/board'
-import { CSV_HEADER, ledgerFile, parseCsv, upsertCsv } from '../hooks/band/ledger'
+import { CSV_HEADER, parseCsv, upsertCsv } from '../hooks/band/ledger'
 import type { Band } from '../hooks/band/types'
 import {
   NO_TOKENS,
@@ -202,11 +202,6 @@ describe('metrics', () => {
     expect(markdown(snapshot(BASE, Date.UTC(2026, 9, 15, 12, 0)))).toContain('| Model | claude-opus-5-5 |')
   })
 
-  test('a name with a carriage return stays in one ledger row', () => {
-    const csv = upsertCsv('', snapshot({ ...BASE, name: 'Fix it\r' }, Date.UTC(2026, 9, 15, 12, 0)))
-    expect(tasksFrom(csv).map(t => t.name)).toEqual(['Fix it\r'])
-  })
-
   test('the webhook sends the token only over https, or to this machine', () => {
     const row = snapshot(BASE, Date.UTC(2026, 9, 15, 12, 0))
     const sent = webhookRequest('https://board.example.com/tasks', 'ptb_x', true, row)
@@ -260,47 +255,6 @@ describe('metrics', () => {
     expect(md).toContain('| Agent time | 26m 0s · ⌀ 4m 20s / turn |')
     expect(md).toContain('| Tokens | 1.2M (input 5k, output 85k, cache read 1.1M, cache write 10k) |')
     expect(md).toContain('| Tests | 14 passed |')
-  })
-
-  test('two project names that sanitize to the same filename keep separate ledgers', () => {
-    expect(ledgerFile('/band', 'myapp', '/work/myapp')).toBe('/band/myapp.csv')
-    expect(ledgerFile('/band', 'api_shop', '/work/api_shop')).toBe('/band/api_shop.csv')
-    expect(ledgerFile('/band', 'api@shop', '/work/api@shop')).toBe('/band/api_shop_ad0ec4e8.csv')
-    expect(ledgerFile('/band', 'api@shop', '/work/api@shop/')).toBe('/band/api_shop_ad0ec4e8.csv')
-    expect(ledgerFile('/band', 'api@shop', '/a/api@shop')).not.toBe(ledgerFile('/band', 'api@shop', '/b/api@shop'))
-    expect(ledgerFile('/band', 'api@shop', '/work/api@shop')).not.toBe(ledgerFile('/band', 'api_shop', '/work/api_shop'))
-  })
-
-  test('the CSV keeps one row per task and replaces it on every turn', () => {
-    const at = Date.UTC(2026, 9, 15, 12, 0)
-    const first = upsertCsv('', snapshot(BASE, at))
-    const lines = first.trim().split('\n')
-    expect(lines.length).toBe(2)
-    expect(lines[1]).toContain('"Fix the cart | totals, again"')
-    const again = upsertCsv(first, snapshot({ ...BASE, spent: 4.2, turns: 7 }, at))
-    expect(again.trim().split('\n').length).toBe(2)
-    expect(again).toContain(',4.20,7,')
-    const other = upsertCsv(again, snapshot({ ...BASE, session: 'ffff0000' }, at + 1))
-    expect(other.trim().split('\n').length).toBe(3)
-  })
-
-  test('the CSV writes a formula-shaped name as text', () => {
-    const at = Date.UTC(2026, 9, 15, 12, 0)
-    const csv = upsertCsv('', snapshot({ ...BASE, name: '=2+2' }, at))
-    expect(csv).toContain("'=2+2")
-    // Replacing the row re-writes kept rows through the same escaping: once, not twice.
-    const again = upsertCsv(csv, snapshot({ ...BASE, session: 'another-session', name: 'x' }, at))
-    expect(again).toContain("'=2+2")
-    expect(again).not.toContain("''=2+2")
-  })
-
-  test('a task name with a line break is replaced whole, not left as a stray line', () => {
-    const at = Date.UTC(2026, 9, 15, 12, 0)
-    const first = upsertCsv('', snapshot({ ...BASE, name: 'first\nsecond' }, at))
-    const again = upsertCsv(first, snapshot({ ...BASE, name: 'first\nsecond', turns: 7 }, at))
-    const rows = parseCsv(again)
-    expect(rows.length).toBe(2)
-    expect(rows[1]?.[3]).toBe('first\nsecond')
   })
 
   test('the desktop row is one SVG with real dividers, escaped and cut to fit', () => {
