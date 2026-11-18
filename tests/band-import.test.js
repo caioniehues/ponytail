@@ -115,9 +115,6 @@ try {
   fs.rmSync(temp, { recursive: true, force: true });
 }
 
-// The band's own writer cannot set a mode, so it locks a fresh ledger directory once.
-const register = fs.readFileSync(path.join(root, 'hooks', 'band', 'register.tsx'), 'utf8');
-assert.ok(register.includes('const fresh = !(await $.fs.exists(dir).catch(() => false))'), 'the fresh check reads whether the ledger directory exists before the write, and a failing exists counts as not fresh');
-assert.ok(/fresh && \(await \$\.env\.get\('OS'\)\) !== 'Windows_NT'\) await \$\.process\.run\(\['chmod', '700', dir\]\)/.test(register), 'a fresh ledger directory is chmod 700, except on Windows');
+// The band's own writer locks a ledger directory it makes: tests/band.test.tsx.
 
 console.log('band import checks passed');

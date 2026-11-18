@@ -34,6 +34,7 @@ import {
   toolTestCounts,
   toolCalls,
   toolsSummary,
+  TITLE_RECORD,
   TOOL_RESULT_RECORD,
   TOOL_USE_RECORD,
   totalTokens,
@@ -599,8 +600,9 @@ test('after /ponytail band the band draws nothing', async ($, on) => {
   await ui.unmount()
 })
 
-// What a hidden band's test sees: the flag set, a transcript per session, and every search and write it makes.
-function hiddenBand(on: On, state: { hidden: boolean; usd: number; calls?: string; defs?: string }) {
+// A band test's session: the band flag, a transcript per session, and every command and write the band makes.
+// ledger: the ledger folder exists already. title: the session's sidebar name in its transcript.
+function bandSession(on: On, state: { hidden: boolean; usd: number; calls?: string; defs?: string; ledger?: boolean; title?: string }) {
   let session = 's1'
   const transcript = () => `/home/u/.claude/projects/-repo/${session}.jsonl`
   on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
@@ -610,7 +612,7 @@ function hiddenBand(on: On, state: { hidden: boolean; usd: number; calls?: strin
   on('session.id', () => ({ value: session }))
   on('session.turns', () => ({ value: 1 }))
   on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: state.usd } } }) as never)
-  on('fs.exists', ($, e) => ({ value: e.path === transcript() }))
+  on('fs.exists', ($, e) => ({ value: e.path === transcript() || (state.ledger === true && e.path.endsWith('/.config/ponytail/band')) }))
   on('fs.list', () => ({ value: [] }))
   const writes: { path: string; text: string }[] = []
   on('fs.write', ($, e) => {
@@ -619,9 +621,10 @@ function hiddenBand(on: On, state: { hidden: boolean; usd: number; calls?: strin
   })
   // The fixture's tool calls: an Edit that removes `legacy`, so a shown turn searches for its callers.
   const toolLines = BAND_SESSION.split('\n').filter(line => line.includes(TOOL_USE_RECORD) || line.includes(TOOL_RESULT_RECORD)).join('\n')
-  const searches: string[][] = []
+  const runs: string[][] = []
   on('process.run', ($, e) => {
-    if (e.argv[0] === 'git' || e.argv[0] === 'grep') searches.push([...e.argv])
+    runs.push([...e.argv])
+    if (e.argv.includes(TITLE_RECORD) && state.title !== undefined) return ran(0, JSON.stringify({ type: 'custom-title', customTitle: state.title })) as never
     if (e.argv.includes(TOOL_USE_RECORD)) return ran(0, state.calls ?? toolLines) as never
     return (e.argv.includes('-nE') && state.defs !== undefined ? ran(0, state.defs) : ran(1)) as never
   })
@@ -631,7 +634,8 @@ function hiddenBand(on: On, state: { hidden: boolean; usd: number; calls?: strin
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }))
-  return { searches, writes }
+  const searches = () => runs.filter(argv => argv[0] === 'git' || argv[0] === 'grep')
+  return { runs, searches, writes }
 }
 
 // A field of the last ledger row a turn wrote.
@@ -643,11 +647,11 @@ function ledgerField(writes: { path: string; text: string }[]) {
 test('a hidden band searches nothing at start-up, after /clear or after a turn, and writes no ledger or board', async ($, on) => {
   mock.clock(on)
   mock.store(on)
-  const { searches, writes } = hiddenBand(on, { hidden: true, usd: 0.5 })
+  const { searches, writes } = bandSession(on, { hidden: true, usd: 0.5 })
   await $.session.start({ cwd: '/repo', surface: null } as never)
   await $.command.run(typed('clear'))
   await $.turn.complete({ answer: '', durationMs: 1000, usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } as never)
-  expect(searches).toEqual([])
+  expect(searches()).toEqual([])
   expect(writes).toEqual([])
 })
 
@@ -655,7 +659,7 @@ test('turns taken while hidden still count: the first shown turn books their tok
   mock.clock(on)
   mock.store(on)
   const state = { hidden: true, usd: 0 }
-  const { writes } = hiddenBand(on, state)
+  const { writes } = bandSession(on, state)
   const usage = { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0 }
   await $.session.start({ cwd: '/repo', surface: null } as never)
   state.usd = 0.2
@@ -681,7 +685,7 @@ test('a definition the task wrote while the band was hidden is new, not reused, 
   // By the first shown turn the tree holds the hidden turn's helper beside the older lineTotal.
   const defs = 'src/util.ts:1:export function helper() {\nsrc/money.ts:1:export function lineTotal(items: number[]) {\nsrc/app.ts:1:export function run() {\n'
   const state = { hidden: true, usd: 0.1, calls: writeHelper.join('\n'), defs }
-  const { writes } = hiddenBand(on, state)
+  const { writes } = bandSession(on, state)
   await $.session.start({ cwd: '/repo', surface: null } as never)
   await $.turn.complete({ answer: '', durationMs: 1000 } as never)
   state.hidden = false
@@ -690,6 +694,38 @@ test('a definition the task wrote while the band was hidden is new, not reused, 
   const field = ledgerField(writes)
   // lineTotal was there before the task: reused. helper and run are the task's own.
   expect([field('reused'), field('new')]).toEqual(['1', '2'])
+})
+
+// The webhook gets the task's name only when sendNames is on. Unset, a load fills in the manifest's default (off).
+for (const sendNames of [undefined, true]) {
+  const options = { webhookUrl: 'https://board.example.com/tasks', ...(sendNames === undefined ? {} : { sendNames }) }
+  test(`with sendNames ${sendNames === undefined ? 'unset' : 'on'} the webhook row ${sendNames === true ? 'names' : 'does not name'} the task`, { options }, async ($, on) => {
+    mock.clock(on)
+    mock.store(on)
+    bandSession(on, { hidden: false, usd: 0.5, title: 'Cart totals' })
+    const bodies: string[] = []
+    on('http.fetch', ($, e) => {
+      bodies.push(String(e.init?.body ?? ''))
+      return { value: { ok: true, status: 200 } } as never
+    })
+    await $.session.start({ cwd: '/repo', surface: null } as never)
+    await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+    expect(bodies.map(body => JSON.parse(body).name)).toEqual([sendNames === true ? 'Cart totals' : ''])
+  })
+}
+
+test('a ledger folder the band makes is locked to the user, one that was there is left as it is', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const state = { hidden: false, usd: 0.5, ledger: false }
+  const { runs } = bandSession(on, state)
+  const chmods = () => runs.filter(argv => argv[0] === 'chmod')
+  await $.session.start({ cwd: '/repo', surface: null } as never)
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+  expect(chmods().map(argv => [argv[1], argv[2]?.replaceAll('\\', '/').endsWith('/home/u/.config/ponytail/band')])).toEqual([['700', true]])
+  state.ledger = true
+  await $.turn.complete({ answer: '', durationMs: 1000 } as never)
+  expect(chmods()).toHaveLength(1)
 })
 
 for (const command of ['clear', 'resume', 'branch']) {
@@ -779,7 +815,11 @@ test('the ledger is written on Windows, where there is no mkdir', async ($, on) 
   on('session.id', () => ({ value: 's1' }))
   on('session.turns', () => ({ value: 1 }))
   on('session.usage', () => ({ value: { startedAt: 0, cost: { usd: 0.5 } } }) as never)
-  on('process.run', ($, e) => (e.argv[0] === 'mkdir' ? { deny: 'mkdir: not found' } : (ran(1) as never)))
+  const runs: string[] = []
+  on('process.run', ($, e) => {
+    runs.push(e.argv[0] ?? '')
+    return e.argv[0] === 'mkdir' ? { deny: 'mkdir: not found' } : (ran(1) as never)
+  })
   on('fs.read', () => ({ deny: 'missing' }) as never)
   on('fs.list', () => ({ value: [] }))
   const written: string[] = []
@@ -802,6 +842,8 @@ test('the ledger is written on Windows, where there is no mkdir', async ($, on) 
   expect(written.length).toBe(2)
   expect(written[0]?.endsWith('C:/Users/u/.config/ponytail/band/shop.csv')).toBe(true)
   expect(written[1]?.endsWith('C:/Users/u/.config/ponytail/band/board.html')).toBe(true)
+  // Windows has no chmod: the folder keeps the rights the user's profile gives it.
+  expect(runs).not.toContain('chmod')
 })
 
 // A task's cost is what its ledger row booked before plus each turn's share of the engine's total.

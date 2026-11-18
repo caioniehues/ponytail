@@ -9,9 +9,6 @@ const root = path.join(__dirname, '..');
 
 const plugin = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8'));
 assert.strictEqual(plugin.userConfig.sendNames.default, false, 'sendNames is off by default');
-
-const register = fs.readFileSync(path.join(root, 'hooks', 'band', 'register.tsx'), 'utf8');
-assert.ok(register.includes('options.sendNames === true'), 'an unset sendNames sends no names');
-assert.ok(!register.includes('options.sendNames !== false'), 'an unset sendNames must not count as on');
+// What the webhook sends with it unset or on: tests/band.test.tsx.
 
 console.log('ok');
