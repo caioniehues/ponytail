@@ -27,8 +27,8 @@ Repo: /home/milena/Projects/ponytail, a fork (`origin` = caioniehues/ponytail) o
 
 ## Open work, in priority order
 
-1. **Hand ports from the band-features batch:** #1404 (the start-up definitions grep stops holding `session.start`; rewrites the `start()` fork #3 restructured) and #1338 (a level pick applies with the next prompt; 7 commits through `ponytail-mode-tracker.js` and `ponytail-runtime.js`, so the per-session level rules above apply). One at a time, test-first.
-2. **Unverified, needs live hosts:** do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
+1. **Hand ports from the band-features batch:** fork issues #4 and #5 (#5 blocked by #4). #1404 (the start-up definitions grep stops holding `session.start`; rewrites the `start()` fork #3 restructured) and #1338 (a level pick applies with the next prompt; 7 commits through `ponytail-mode-tracker.js` and `ponytail-runtime.js`, so the per-session level rules above apply). One at a time, test-first.
+2. **Unverified, needs live hosts** (fork issue #6, `ready-for-human`): do OpenCode V1 hooks (`experimental.chat.system.transform`) get a `sessionID`? If not, V1 falls back to the shared file. No live test of session keying on Claude Code, Codex or OpenCode; that Claude Code keeps the session id on resume (unless `--fork-session`) is assumed.
 3. **Benchmark task** for owner-anchored fixes: fork issue #1. Validating it needs paid `claude -p` runs: ask first.
 
 ## Suggested skills
