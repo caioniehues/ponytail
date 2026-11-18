@@ -52,3 +52,26 @@ test('resume keeps its own session level when another session in the repo starte
   assert.equal(hook('ponytail-activate.js', 'A', { source: 'resume' }), 'PONYTAIL MODE ACTIVE — level: ultra');
   assert.equal(hook('ponytail-activate.js', 'B', { source: 'resume' }), '', 'the session that started off resumes off');
 });
+
+test('a session id with no state file of its own falls back to the project level, and a lost payload still finds it', (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-resume-fallback-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: '', PLUGIN_DATA: '', COPILOT_PLUGIN_DATA: '', CURSOR_VERSION: '', CURSOR_PROJECT_DIR: '',
+    CODEBUDDY_PLUGIN_ROOT: '', CODEBUDDY_CONFIG_DIR: '', PONYTAIL_MAP: '0', HOME: temp, USERPROFILE: temp,
+    CLAUDE_PROJECT_DIR: '/work/shared-repo', PONYTAIL_DEFAULT_MODE: 'full' };
+  const hook = (script, input) => spawnSync(process.execPath, [path.join(__dirname, '..', 'hooks', script)], { env, input, encoding: 'utf8' }).stdout;
+
+  // A session from before session keying: its level lives only in the project file.
+  hook('ponytail-activate.js', JSON.stringify({ source: 'startup' }));
+  hook('ponytail-mode-tracker.js', JSON.stringify({ prompt: '/ponytail ultra' }));
+  assert.equal(hook('ponytail-activate.js', JSON.stringify({ session_id: 'old', source: 'resume' })), 'PONYTAIL MODE ACTIVE — level: ultra');
+
+  // A keyed session's switch also reaches the project file, which a subagent hook with no payload reads.
+  hook('ponytail-mode-tracker.js', JSON.stringify({ session_id: 'A', prompt: '/ponytail lite' }));
+  assert.match(hook('ponytail-subagent.js', ''), /level: lite/);
+
+  // A keyed session that was stopped resumes off, even with a level in the project file.
+  hook('ponytail-mode-tracker.js', JSON.stringify({ session_id: 'B', prompt: 'stop ponytail' }));
+  hook('ponytail-mode-tracker.js', JSON.stringify({ session_id: 'A', prompt: '/ponytail ultra' }));
+  assert.equal(hook('ponytail-activate.js', JSON.stringify({ session_id: 'B', source: 'resume' })), '');
+});

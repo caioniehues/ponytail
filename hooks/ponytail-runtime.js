@@ -47,7 +47,7 @@ const statePath = path.join(stateDir, STATE_FILE);
 // project and concurrent sessions in different repos stop overwriting each other
 // (#662, #809). Hosts without it keep the single shared flag. A session id from
 // the hook payload narrows this further (bindSession below).
-// ponytail: the statusline scripts read the shared flag (last write wins).
+// shortcut: the statusline scripts and the band read the shared flag (last write wins), so parallel sessions show the last switch; read the session file there if that matters.
 const projectDir = (process.env.CLAUDE_PROJECT_DIR || '').trim();
 // Replacing separators with '_' aliases e.g. /work/a/b and /work/a_b (#662).
 // Do not read old sanitized keys: they cannot be assigned to one project safely.
@@ -69,28 +69,37 @@ function bindSession(sessionId) {
     createHash('sha256').update(id).digest('hex'));
 }
 
-// The shared flag is still written, for the statusline and project-less hosts.
+// The project and shared flags are still written: the statusline, project-less hosts,
+// and a hook whose payload got lost (#443) read them.
 function setMode(mode) {
-  for (const file of [sessionStatePath || projectStatePath, statePath]) {
+  for (const file of [sessionStatePath, projectStatePath, statePath]) {
     if (!file) continue;
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, mode);
   }
 }
 
+// A session records "off" rather than deleting its file, so readMode tells a stopped
+// session from one that has no file yet (started before session keying, or forked).
 function clearMode() {
-  for (const file of [sessionStatePath || projectStatePath, statePath]) {
+  if (sessionStatePath) {
+    fs.mkdirSync(path.dirname(sessionStatePath), { recursive: true });
+    fs.writeFileSync(sessionStatePath, 'off');
+  }
+  for (const file of [projectStatePath, statePath]) {
     if (file) try { fs.unlinkSync(file); } catch (e) {}
   }
 }
 
 // Live mode written by activate/mode-tracker. Absent flag = ponytail off.
 function readMode() {
-  try {
-    return fs.readFileSync(sessionStatePath || projectStatePath || statePath, 'utf8').trim() || null;
-  } catch (e) {
-    return null;
+  for (const file of [sessionStatePath, projectStatePath || statePath]) {
+    if (!file) continue;
+    try {
+      return fs.readFileSync(file, 'utf8').trim() || null;
+    } catch (e) {}
   }
+  return null;
 }
 
 // Cursor's always-on project rule (.cursor/rules/ponytail.mdc) already puts the
