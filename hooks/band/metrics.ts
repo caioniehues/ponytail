@@ -5,9 +5,9 @@ import type { Band, Tokens } from './types'
 
 export { duration, elapsed, fmtTokens }
 
-// Same skip rules as ponytail-map.js: tests, vendored and generated code are not "reuse".
-const SKIP_DIR = /(^|\/)(node_modules|\.git|dist|build|out|vendor|venv|\.venv|__pycache__|coverage|\.next|target|migrations|fixtures|tests?|__tests__|spec)(\/|$)/
-const SKIP_FILE = /(^|\/)(test_[^/]*|[^/]*(_test|\.test|\.spec|\.gen|\.min|\.d)\.[a-z]+)$/
+// ponytail-map.js's skip rules plus Swift test folders and files: tests, vendored and generated code are not "reuse".
+const SKIP_DIR = /(^|\/)(node_modules|\.git|dist|build|out|vendor|venv|\.venv|__pycache__|coverage|\.next|target|migrations|fixtures|tests?|[^/]*Tests|__tests__|spec)(\/|$)/
+const SKIP_FILE = /(^|\/)(test_[^/]*|[^/]*(_test|\.test|\.spec|\.gen|\.min|\.d)\.[a-z]+|[^/]*Tests\.swift)$/
 
 // Top-level definitions per language, close to ponytail-map.js, plus plain JS functions.
 // shortcut: regex, not a parser; nested and dynamic definitions are missed. Use tree-sitter if it matters.
@@ -25,7 +25,8 @@ const DEFS: [RegExp, RegExp[]][] = [
     /^\s*(?:(?:public|protected|private|static|abstract|final)\s+)*function\s+&?([A-Za-z_]\w*)\s*\(/gm,
     /^\s*(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z_]\w*)/gm,
   ]],
-  [/\.(java|kt|swift|cs)$/, [/^\s*(?:public\s+)?(?:static\s+)?(?:final\s+)?(?:class|interface|enum|record)\s+(\w+)/gm]],
+  [/\.swift$/, [/^(?:(?:public|package|internal|fileprivate|private|open|final|static|nonisolated)\s+)*(?:func|struct|class|enum|actor|protocol)\s+([A-Za-z_]\w*)/gm]],
+  [/\.(java|kt|cs)$/, [/^\s*(?:public\s+)?(?:static\s+)?(?:final\s+)?(?:class|interface|enum|record)\s+(\w+)/gm]],
 ]
 
 // Lines worth a closer look; the per-language regexes above decide.
@@ -104,11 +105,32 @@ export function inProject(file: string, root: string): boolean {
 
 // The runner must be in command position (start, after a separator or path, or behind run/exec/npx/env/time/VAR=),
 // so `cat jest.config.js` or `pip install pytest` do not count as a test run and overwrite its result.
-const TEST_CMD = /(?:^|[;&|(/]\s*|\b(?:run|exec|npx|bunx|pnpx|time|env|nice|timeout \S+)\s+|\b\w+=\S*\s+)(npm (run )?test|pnpm (run )?test|yarn test|bun test|npx (jest|vitest)|jest|vitest|pytest|python3? -m pytest|go test|cargo test|mvn test|gradle test|rspec|phpunit|dotnet test|node --test|deno test|make test)(?![\w.-])/
+const TEST_CMD = /(?:^|[;&|(/]\s*|\b(?:run|exec|npx|bunx|pnpx|time|env|nice|timeout \S+)\s+|\b\w+=\S*\s+)(npm (run )?test|pnpm (run )?test|yarn test|bun test|npx (jest|vitest)|jest|vitest|pytest|python3? -m pytest|go test|cargo test|mvn test|gradle test|rspec|phpunit|dotnet test|node --test|deno test|make test|swift test(?![^|;&]*(?:\slist\b|--list-tests))|xcodebuild\b[^|;&]*\stest(?:-without-building)?)(?![\w.-])/
 
 export const isTestCommand = (command: string) => TEST_CMD.test(command)
 
-// Pass and fail counts from common runners: pytest, jest/vitest, cargo, node --test, TAP.
+// Xcode's MCP server runs tests as tools, not commands. A failing test is not a tool error there.
+// The server name is whatever the user registered it as.
+const TEST_TOOL = /^mcp__.+__Run(All|Some)Tests$/
+
+export const isTestTool = (tool: string) => TEST_TOOL.test(tool)
+
+// Of the tool's errors only a failed build says something about the code; a mistyped test or an
+// unfinished run says nothing, so the last result stands.
+// shortcut: matches Xcode's English text; if Apple rewords it, failed builds stop turning red. Match an error code if Xcode adds one.
+export const isBuildFailure = (text: string) => text.includes('Build action failed')
+
+// Pass and fail counts from the tool's JSON answer; undefined when it has none.
+export function toolTestCounts(text: string): { passed: number; failed: number } | undefined {
+  try {
+    const c = JSON.parse(text)?.counts
+    return typeof c?.passed === 'number' && typeof c?.failed === 'number' ? { passed: c.passed, failed: c.failed } : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// Pass and fail counts from common runners: pytest, jest/vitest, cargo, node --test, TAP, Swift Testing, XCTest.
 export function testCounts(output: string): { passed?: number; failed?: number } {
   // jest/vitest print a file/suite summary ("Test Suites: 2 passed", "Test Files  2 passed")
   // above the Tests line; the first "N passed" in the output is then the suite count,
@@ -129,11 +151,21 @@ export function testCounts(output: string): { passed?: number; failed?: number }
     passed: num(/(\d+) (?:passed|passing)\b/, src) ?? num(/(?:ℹ |# )pass (\d+)/, src),
     failed: num(/(\d+) (?:failed|failing)\b/, src) ?? num(/(?:ℹ |# )fail (\d+)/, src),
   })
+  // XCTest prints an "Executed" line per suite and the total last; swift test prints "Executed 0 tests" when only Swift Testing ran.
+  const xc = [...text.matchAll(/Executed (\d+) tests?, with (\d+) failures?/g)].at(-1)
+  const xcTotal = Number(xc?.[1] ?? 0)
+  const xcFailed = xcTotal > 0 ? Number(xc?.[2] ?? 0) : undefined
+  const xcPassed = xcFailed === undefined ? undefined : xcTotal - xcFailed
+  // A package mid-migration runs both; Swift Testing's failure line counts issues, not tests.
+  const stPassed = num(/Test run with (\d+) tests?(?: in \d+ suites?)? passed/, text)
+  const stFailed = /Test run with \d+ tests?(?: in \d+ suites?)? failed/.test(text)
+  const swiftPassed = stPassed === undefined && xcPassed === undefined ? undefined : (stPassed ?? 0) + (xcPassed ?? 0)
   if (tests) {
     const scoped = counts(tests)
     if (scoped.passed !== undefined || scoped.failed !== undefined) return scoped
   }
-  return counts(text)
+  const all = counts(text)
+  return { passed: all.passed ?? swiftPassed, failed: all.failed ?? (stFailed ? undefined : xcFailed) }
 }
 
 export type Col = { key: string; label: string; value: string; sub: string; tone?: 'warning' | 'success' | 'error' }
@@ -190,7 +222,17 @@ export function toolsSummary(calls: ToolCall[], root: string, known: Map<string,
     // Windows hosts run commands through the PowerShell tool.
     if (call.name === 'Bash' || call.name === 'PowerShell') {
       // A failing test run is the answer, not a tool that did nothing.
-      if (isTestCommand(str(call.input, 'command'))) tests = { state: call.failed ? 'fail' : 'pass', ...testCounts(call.text) }
+      if (isTestCommand(str(call.input, 'command'))) {
+        // A pipe (xcodebuild test | xcbeautify, npm test | tail) exits 0 on failures, so the count decides too.
+        const counts = testCounts(call.text)
+        tests = { state: call.failed || counts.failed ? 'fail' : 'pass', ...counts }
+      }
+      continue
+    }
+    if (isTestTool(call.name)) {
+      const counts = call.failed ? undefined : toolTestCounts(call.text)
+      const broke = call.failed && isBuildFailure(call.text)
+      if (broke || counts) tests = { state: broke || counts?.failed ? 'fail' : 'pass', ...counts }
       continue
     }
     if ((call.name !== 'Edit' && call.name !== 'Write') || call.failed) continue
