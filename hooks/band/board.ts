@@ -93,6 +93,7 @@ export function tasksFrom(text: string): Task[] {
     level: at(row, 'level'),
     model: at(row, 'model'),
   }))
+  // shortcut: an imported task with an unknown cost (an unpriced model or fast mode) is dropped too; show it with "–" if one ever goes missing.
   return tasks.filter(t => [t.cost, t.turns, t.agentMinutes, t.tokens, t.reuse ?? 0].every(Number.isFinite))
 }
 

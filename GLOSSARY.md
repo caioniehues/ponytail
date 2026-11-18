@@ -28,6 +28,10 @@ _Avoid_: folder, workspace
 The record of tasks for one project, one row per task.
 _Avoid_: log, history, CSV
 
+**Cost**:
+What a task's model calls would cost at API list prices, as the host reports it or the import estimates it. Not a bill. A task's cost can be unknown.
+_Avoid_: bill, spend, price
+
 **Board**:
 The page that compares a project's tasks, built from its ledger.
 _Avoid_: dashboard, report
